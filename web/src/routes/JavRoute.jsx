@@ -282,6 +282,7 @@ function JavListRoute({
   setJavPage,
   setJavTempSort,
   waterfallMode,
+  onTitlesUpdated,
 }) {
   return (
     <JavView
@@ -343,6 +344,7 @@ function JavListRoute({
       onLoadMore={onLoadMore}
       loadingMore={loadingMore}
       hasMore={hasMore}
+      onTitlesUpdated={onTitlesUpdated}
     />
   )
 }

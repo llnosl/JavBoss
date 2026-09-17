@@ -91,6 +91,7 @@ export default function JavQueryEditorModal({
   seriesName = '',
   prefix = '',
   soloOnly = false,
+  subtitleFilter = '',
   preferChineseName = false,
   showSimplifiedTags = false,
   favoriteGroupId = null,
@@ -125,6 +126,7 @@ export default function JavQueryEditorModal({
   const [studioPickerOpen, setStudioPickerOpen] = useState(false)
   const [selectedSeries, setSelectedSeries] = useState(null)
   const [selectedSoloOnly, setSelectedSoloOnly] = useState(false)
+  const [selectedSubtitleFilter, setSelectedSubtitleFilter] = useState('')
   const [selectedFavoriteRatingEnabled, setSelectedFavoriteRatingEnabled] = useState(false)
   const [selectedFavoriteRatingRange, setSelectedFavoriteRatingRange] = useState([0.5, 5])
   const [seriesSearch, setSeriesSearch] = useState('')
@@ -171,6 +173,9 @@ export default function JavQueryEditorModal({
         : null
     )
     setSelectedSoloOnly(Boolean(soloOnly))
+    setSelectedSubtitleFilter(
+      subtitleFilter === 'has' || subtitleFilter === 'none' ? subtitleFilter : ''
+    )
     setSelectedFavoriteRatingEnabled(Boolean(favoriteRatingEnabled))
     const nextFavoriteRatingMin = cleanFavoriteRating(favoriteRatingMin, 0.5)
     const nextFavoriteRatingMax = cleanFavoriteRating(favoriteRatingMax, 5)
@@ -195,6 +200,7 @@ export default function JavQueryEditorModal({
     seriesId,
     seriesName,
     soloOnly,
+    subtitleFilter,
     studioId,
     studioName,
     tagIds,
@@ -214,6 +220,7 @@ export default function JavQueryEditorModal({
         seriesId: selectedSeries?.id ?? null,
         prefix: cleanJavPrefix(selectedPrefix?.prefix),
         soloOnly: selectedSoloOnly,
+        subtitleFilter: selectedSubtitleFilter,
         favoriteGroupId,
         favoriteRatingEnabled: selectedFavoriteRatingEnabled,
         favoriteRatingMin: selectedFavoriteRatingRange[0],
@@ -270,6 +277,7 @@ export default function JavQueryEditorModal({
     selectedFavoriteRatingRange,
     selectedSeries?.id,
     selectedSoloOnly,
+    selectedSubtitleFilter,
     selectedStudio?.id,
     selectedTagIds,
     seriesSearch,
@@ -498,6 +506,7 @@ export default function JavQueryEditorModal({
     setStudioPickerOpen(false)
     setSelectedSeries(null)
     setSelectedSoloOnly(false)
+    setSelectedSubtitleFilter('')
     setSelectedFavoriteRatingEnabled(false)
     setSelectedFavoriteRatingRange([0.5, 5])
     setSeriesSearch('')
@@ -513,6 +522,7 @@ export default function JavQueryEditorModal({
       studio: selectedStudio,
       series: selectedSeries,
       soloOnly: selectedSoloOnly,
+      subtitleFilter: selectedSubtitleFilter,
       favoriteRatingEnabled: selectedFavoriteRatingEnabled,
       favoriteRatingMin: selectedFavoriteRatingRange[0],
       favoriteRatingMax: selectedFavoriteRatingRange[1],
@@ -583,6 +593,22 @@ export default function JavQueryEditorModal({
               </span>
             ) : null}
           </label>
+        </section>
+
+        <section className="min-w-0 space-y-2">
+          <label htmlFor="jav-subtitle-filter" className="block text-sm font-semibold text-slate-800">
+            {zh('字幕状态', 'Subtitle Status')}
+          </label>
+          <select
+            id="jav-subtitle-filter"
+            value={selectedSubtitleFilter}
+            onChange={(event) => setSelectedSubtitleFilter(event.target.value)}
+            className="w-full rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">{zh('全部', 'All')}</option>
+            <option value="has">{zh('存在字幕', 'Has subtitles')}</option>
+            <option value="none">{zh('不存在字幕（已检测）', 'No subtitles (scanned)')}</option>
+          </select>
         </section>
 
         <section className="min-w-0 space-y-2">

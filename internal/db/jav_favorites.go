@@ -132,6 +132,7 @@ type JavFavoriteItemSummary struct {
 	ChineseName  string `json:"chinese_name"`
 	Code         string `json:"code"`
 	Title        string `json:"title"`
+	TitleZH      string `json:"title_zh"`
 	WorkCount    int64  `json:"work_count"`
 	SampleCode   string `json:"sample_code"`
 }
@@ -521,12 +522,12 @@ func ListJavFavoriteGroupItems(ctx context.Context, entityType string, groupID i
 	switch entityType {
 	case JavFavoriteEntityJav:
 		query = query.
-			Select("'jav' AS entity_type, j.id, j.code, j.title, j.code || ' ' || COALESCE(j.title, '') AS name").
+			Select("'jav' AS entity_type, j.id, j.code, j.title, j.title_zh, j.code || ' ' || COALESCE(NULLIF(TRIM(j.title_zh), ''), j.title, '') AS name").
 			Joins("JOIN jav j ON j.id = jfm.entity_id").
 			Joins("JOIN video_location vl ON vl.jav_id = j.id").
 			Joins("JOIN directory d ON d.id = vl.directory_id").
 			Where(activeLocationWhereSQL("vl", "d")).
-			Group("jfm.sort_order, j.id, j.code, j.title")
+			Group("jfm.sort_order, j.id, j.code, j.title, j.title_zh")
 		query = applyDirectoryFilter(query, "vl", directoryIDs)
 	case JavFavoriteEntityIdol:
 		query = query.

@@ -2,6 +2,7 @@ import SwapVertIcon from '@mui/icons-material/SwapVert'
 import { Popover } from '@mui/material'
 import { useState } from 'react'
 import JavGrid from '@/components/JavGrid'
+import JavTitleTranslationModal from '@/components/JavTitleTranslationModal'
 import BulkActionsMenu from '@/components/BulkActionsMenu'
 import Pagination from '@/components/Pagination'
 import WaterfallLoader from '@/components/WaterfallLoader'
@@ -79,8 +80,10 @@ export default function JavView({
   onLoadMore,
   loadingMore,
   hasMore,
+  onTitlesUpdated,
 }) {
   const [sortAnchorEl, setSortAnchorEl] = useState(null)
+  const [titleTranslationOpen, setTitleTranslationOpen] = useState(false)
   const effectiveSort = javResolvedSort
   const currentOption = findSortOption(JAV_SORT_OPTIONS, effectiveSort) || JAV_SORT_OPTIONS[0]
   const activeWaterfallMode = waterfallMode && !javRandomMode
@@ -134,6 +137,7 @@ export default function JavView({
                 onSelectPage={onSelectPage}
                 onPlayPage={onPlayPage}
                 onPlayAll={onPlayAll}
+                onTranslateTitles={() => setTitleTranslationOpen(true)}
               />
             }
           />
@@ -272,6 +276,11 @@ export default function JavView({
         hasMore={hasMore}
         loading={loadingMore}
         onLoadMore={onLoadMore}
+      />
+      <JavTitleTranslationModal
+        open={titleTranslationOpen}
+        onClose={() => setTitleTranslationOpen(false)}
+        onUpdated={onTitlesUpdated}
       />
     </>
   )

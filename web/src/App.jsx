@@ -215,6 +215,7 @@ export default function App() {
     javSeriesName,
     javPrefix,
     javSoloOnly,
+    javSubtitleFilter,
     javFavoriteRatingEnabled,
     javFavoriteRatingMin,
     javFavoriteRatingMax,
@@ -424,6 +425,7 @@ export default function App() {
     javSeriesId,
     javPrefix,
     javSoloOnly,
+    javSubtitleFilter,
     javFavoriteRatingEnabled,
     javFavoriteGroupId,
     javSort,
@@ -1340,6 +1342,7 @@ export default function App() {
           javSeriesName: jav.tab === 'list' && jav.seriesId ? jav.seriesName : '',
           javPrefix: jav.tab === 'list' ? jav.prefix : '',
           javSoloOnly: jav.tab === 'list' ? jav.soloOnly : false,
+          javSubtitleFilter: jav.tab === 'list' ? jav.subtitleFilter : '',
           javFavoriteRatingEnabled: jav.tab === 'list' ? jav.favoriteRatingEnabled : false,
           javFavoriteRatingMin: jav.tab === 'list' ? jav.favoriteRatingMin : 0.5,
           javFavoriteRatingMax: jav.tab === 'list' ? jav.favoriteRatingMax : 5,
@@ -1417,6 +1420,7 @@ export default function App() {
           javSeriesName,
           javPrefix,
           javSoloOnly,
+          javSubtitleFilter,
           javFavoriteRatingEnabled,
           javFavoriteRatingMin,
           javFavoriteRatingMax,
@@ -1448,6 +1452,7 @@ export default function App() {
       javSeriesId,
       javPrefix,
       javSoloOnly,
+      javSubtitleFilter,
       javFavoriteRatingEnabled,
       javFavoriteRatingMin,
       javFavoriteRatingMax,
@@ -1563,6 +1568,7 @@ export default function App() {
         seriesName: seriesNameOverride,
         prefix: prefixOverride,
         soloOnly: soloOnlyOverride,
+        subtitleFilter: subtitleFilterOverride,
         favoriteRatingEnabled: favoriteRatingEnabledOverride,
         favoriteRatingMin: favoriteRatingMinOverride,
         favoriteRatingMax: favoriteRatingMaxOverride,
@@ -1622,6 +1628,14 @@ export default function App() {
       const soloOnly = hasSoloOnlyOverride ? Boolean(soloOnlyOverride) : Boolean(javSoloOnly)
       if (tab === 'list' && soloOnly) {
         sp.set('solo', '1')
+      }
+      const hasSubtitleFilterOverride = Object.prototype.hasOwnProperty.call(
+        options,
+        'subtitleFilter'
+      )
+      const subtitleFilter = hasSubtitleFilterOverride ? subtitleFilterOverride : javSubtitleFilter
+      if (tab === 'list' && (subtitleFilter === 'has' || subtitleFilter === 'none')) {
+        sp.set('subtitle', subtitleFilter)
       }
       const hasFavoriteRatingEnabledOverride = Object.prototype.hasOwnProperty.call(
         options,
@@ -1719,6 +1733,7 @@ export default function App() {
       javSeriesName,
       javPrefix,
       javSoloOnly,
+      javSubtitleFilter,
       javFavoriteRatingEnabled,
       javFavoriteRatingMin,
       javFavoriteRatingMax,
@@ -1757,6 +1772,7 @@ export default function App() {
         javSeriesName: '',
         javPrefix: '',
         javSoloOnly: false,
+        javSubtitleFilter: '',
         javFavoriteRatingEnabled: false,
         javFavoriteRatingMin: 0.5,
         javFavoriteRatingMax: 5,
@@ -1847,6 +1863,7 @@ export default function App() {
     javSeriesId,
     javPrefix,
     javSoloOnly,
+    javSubtitleFilter,
     javFavoriteRatingEnabled,
     javFavoriteRatingMin,
     javFavoriteRatingMax,
@@ -2547,6 +2564,16 @@ export default function App() {
         onRemove: () => updateJavFilters({ javSoloOnly: false }),
       })
     }
+    if (javSubtitleFilter === 'has' || javSubtitleFilter === 'none') {
+      items.push({
+        key: 'jav-subtitle',
+        label:
+          javSubtitleFilter === 'has'
+            ? zh('字幕: 存在', 'Subtitles: Has subtitles')
+            : zh('字幕: 不存在（已检测）', 'Subtitles: No subtitles (scanned)'),
+        onRemove: () => updateJavFilters({ javSubtitleFilter: '' }),
+      })
+    }
     if (javFavoriteRatingEnabled) {
       const formatRating = (value) => {
         const rating = Number(value)
@@ -2581,6 +2608,7 @@ export default function App() {
     javSeriesId,
     javSeriesName,
     javSoloOnly,
+    javSubtitleFilter,
     javStudioId,
     javStudioName,
     javTab,
@@ -2616,6 +2644,7 @@ export default function App() {
         javSeriesName: '',
         javPrefix: '',
         javSoloOnly: false,
+        javSubtitleFilter: '',
         javFavoriteRatingEnabled: false,
         javFavoriteRatingMin: 0.5,
         javFavoriteRatingMax: 5,
@@ -3291,6 +3320,7 @@ export default function App() {
         javSeriesName: '',
         javPrefix: '',
         javSoloOnly: false,
+        javSubtitleFilter: '',
         javFavoriteRatingEnabled: false,
         javFavoriteRatingMin: 0.5,
         javFavoriteRatingMax: 5,
@@ -3353,6 +3383,7 @@ export default function App() {
       javSeriesName: '',
       javPrefix: '',
       javSoloOnly: false,
+      javSubtitleFilter: '',
       javFavoriteRatingEnabled: false,
       javFavoriteRatingMin: 0.5,
       javFavoriteRatingMax: 5,
@@ -3415,6 +3446,7 @@ export default function App() {
       javSeriesId: null,
       javSeriesName: '',
       javSoloOnly: false,
+      javSubtitleFilter: '',
       javFavoriteRatingEnabled: false,
       javFavoriteRatingMin: 0.5,
       javFavoriteRatingMax: 5,
@@ -3566,6 +3598,7 @@ export default function App() {
         javSeriesName: '',
         javPrefix: '',
         javSoloOnly: false,
+        javSubtitleFilter: '',
         javFavoriteRatingEnabled: false,
         javFavoriteRatingMin: 0.5,
         javFavoriteRatingMax: 5,
@@ -3776,6 +3809,7 @@ export default function App() {
         javSeriesId: null,
         javSeriesName: '',
         javSoloOnly: false,
+        javSubtitleFilter: '',
         javFavoriteRatingEnabled: false,
         javFavoriteRatingMin: 0.5,
         javFavoriteRatingMax: 5,
@@ -3810,6 +3844,7 @@ export default function App() {
       javSeriesName: '',
       javPrefix: '',
       javSoloOnly: false,
+      javSubtitleFilter: '',
       javFavoriteRatingEnabled: false,
       javFavoriteRatingMin: 0.5,
       javFavoriteRatingMax: 5,
@@ -3842,6 +3877,7 @@ export default function App() {
       javSeriesName: String(series?.name || '').trim(),
       javPrefix: '',
       javSoloOnly: false,
+      javSubtitleFilter: '',
       javFavoriteRatingEnabled: false,
       javFavoriteRatingMin: 0.5,
       javFavoriteRatingMax: 5,
@@ -3880,6 +3916,7 @@ export default function App() {
       javSeriesName: '',
       javPrefix: prefix,
       javSoloOnly: false,
+      javSubtitleFilter: '',
       javFavoriteRatingEnabled: false,
       javFavoriteRatingMin: 0.5,
       javFavoriteRatingMax: 5,
@@ -3973,6 +4010,10 @@ export default function App() {
         javSeriesName: nextSeriesName,
         javPrefix: nextPrefix,
         javSoloOnly: Boolean(query?.soloOnly),
+        javSubtitleFilter:
+          query?.subtitleFilter === 'has' || query?.subtitleFilter === 'none'
+            ? query.subtitleFilter
+            : '',
         javFavoriteRatingEnabled: nextFavoriteRatingEnabled,
         javFavoriteRatingMin: nextFavoriteRatingMin,
         javFavoriteRatingMax: nextFavoriteRatingMax,
@@ -4257,6 +4298,7 @@ export default function App() {
             seriesId: null,
             prefix: item?.prefix || '',
             soloOnly: false,
+            subtitleFilter: '',
             favoriteRatingEnabled: false,
             favoriteGroupId: null,
             random: false,
@@ -4308,6 +4350,7 @@ export default function App() {
             seriesName: '',
             prefix: '',
             soloOnly: false,
+            subtitleFilter: '',
             favoriteRatingEnabled: false,
             idolProfileFilters: createDefaultIdolProfileFilters(),
             favoriteGroupId: targetGroupId,
@@ -4327,7 +4370,7 @@ export default function App() {
         filterItems={activeFilterItems}
         hasActiveControlFilter={
           isJavMode &&
-          ((javTab === 'list' && javFavoriteRatingEnabled) ||
+          ((javTab === 'list' && (javFavoriteRatingEnabled || Boolean(javSubtitleFilter))) ||
             (javTab === 'idol' &&
               (Boolean(String(javSearchTerm || '').trim()) ||
                 Object.values(normalizeIdolProfileFilters(idolProfileFilters)).some(
@@ -4531,6 +4574,7 @@ export default function App() {
               onLoadMore: loadMoreJavs,
               loadingMore: javLoadingMore,
               hasMore: javWaterfallHasMore,
+              onTitlesUpdated: () => loadJavs({ force: true }),
             }}
           />
         ) : (
@@ -4601,6 +4645,7 @@ export default function App() {
         seriesName={javSeriesName}
         prefix={javPrefix}
         soloOnly={javSoloOnly}
+        subtitleFilter={javSubtitleFilter}
         preferChineseName={configFlag(config?.jav_idol_prefer_chinese_name)}
         showSimplifiedTags={configFlag(config?.jav_tag_show_simplified)}
         favoriteGroupId={javFavoriteGroupId}

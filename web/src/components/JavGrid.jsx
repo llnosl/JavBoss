@@ -3019,7 +3019,7 @@ function JavCard({
                   type="button"
                   role="checkbox"
                   aria-checked={checked}
-                  aria-label={zh(`选择 ${code || item.title}`, `Select ${code || item.title}`)}
+                  aria-label={zh(`选择 ${code || mainTitle}`, `Select ${code || mainTitle}`)}
                   disabled={selectionDisabled}
                   onKeyDown={(event) => {
                     if (event.key === ' ' || event.key === 'Enter') event.stopPropagation()

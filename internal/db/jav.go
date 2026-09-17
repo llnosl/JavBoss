@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -134,6 +136,82 @@ type JavMetadataScanItem struct {
 	SeriesEnID *int64 `gorm:"column:series_en_id"`
 }
 
+// JavTitleTranslationItem is a visible JAV title waiting for Simplified Chinese translation.
+type JavTitleTranslationItem struct {
+	ID    int64  `json:"id" gorm:"column:id"`
+	Code  string `json:"code" gorm:"column:code"`
+	Title string `json:"title" gorm:"column:title"`
+}
+
+type javTitleTranslationRow struct {
+	ID                int64  `gorm:"column:id"`
+	Code              string `gorm:"column:code"`
+	Title             string `gorm:"column:title"`
+	TitleZH           string `gorm:"column:title_zh"`
+	TitleZHSourceHash string `gorm:"column:title_zh_source_hash"`
+}
+
+// ListJavTitleTranslationItems returns visible library titles that need translation.
+func ListJavTitleTranslationItems(ctx context.Context, force bool) ([]JavTitleTranslationItem, error) {
+	var rows []javTitleTranslationRow
+	visibleLocation := common.DB.WithContext(ctx).
+		Table("video_location vl_title_translation").
+		Select("1").
+		Joins("JOIN directory d_title_translation ON d_title_translation.id = vl_title_translation.directory_id").
+		Where("vl_title_translation.jav_id = jav.id").
+		Where(activeLocationWhereSQL("vl_title_translation", "d_title_translation"))
+	if err := common.DB.WithContext(ctx).
+		Model(&models.Jav{}).
+		Select("jav.id, jav.code, jav.title, jav.title_zh, jav.title_zh_source_hash").
+		Where("EXISTS (?)", visibleLocation).
+		Where("TRIM(COALESCE(jav.title, '')) <> ''").
+		Order("jav.id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("list JAV titles for translation: %w", err)
+	}
+
+	items := make([]JavTitleTranslationItem, 0, len(rows))
+	for _, row := range rows {
+		row.Title = strings.TrimSpace(row.Title)
+		if !force && strings.TrimSpace(row.TitleZH) != "" && row.TitleZHSourceHash == JavTitleSourceHash(row.Title) {
+			continue
+		}
+		items = append(items, JavTitleTranslationItem{ID: row.ID, Code: row.Code, Title: row.Title})
+	}
+	return items, nil
+}
+
+// SaveJavChineseTitle stores a translated title only if its source title is still current.
+func SaveJavChineseTitle(ctx context.Context, javID int64, sourceTitle, translatedTitle string) error {
+	sourceTitle = strings.TrimSpace(sourceTitle)
+	translatedTitle = strings.TrimSpace(translatedTitle)
+	if javID <= 0 || sourceTitle == "" || translatedTitle == "" {
+		return errors.New("JAV title translation is incomplete")
+	}
+	now := time.Now()
+	result := common.DB.WithContext(ctx).
+		Model(&models.Jav{}).
+		Where("id = ? AND TRIM(title) = ?", javID, sourceTitle).
+		Updates(map[string]any{
+			"title_zh":               translatedTitle,
+			"title_zh_source_hash":   JavTitleSourceHash(sourceTitle),
+			"title_zh_translated_at": now,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("save JAV Chinese title: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("source title changed during translation")
+	}
+	return nil
+}
+
+// JavTitleSourceHash identifies the exact original title used by a translation.
+func JavTitleSourceHash(title string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(title)))
+	return hex.EncodeToString(sum[:])
+}
+
 // GetJav returns one JAV record with visible files and tags.
 func GetJav(ctx context.Context, javID int64, directoryIDs []int64) (*models.Jav, error) {
 	if javID <= 0 {
@@ -172,6 +250,7 @@ type JavSearchFilters struct {
 	StudioID          int64
 	SeriesID          int64
 	SoloOnly          bool
+	SubtitleFilter    string
 	FavoriteGroupID   int64
 	FavoriteRatingMin *float64
 	FavoriteRatingMax *float64
@@ -442,13 +521,19 @@ func UpdateJav(ctx context.Context, javID int64, input JavUpdateInput, directory
 	}
 	err := common.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var javRec models.Jav
-		if err := tx.Select("id", "studio_id").Where("id = ?", javID).First(&javRec).Error; err != nil {
+		if err := tx.Select("id", "title", "studio_id").Where("id = ?", javID).First(&javRec).Error; err != nil {
 			return fmt.Errorf("find jav: %w", err)
 		}
 
 		updates := map[string]any{}
 		if input.Title != nil {
-			updates["title"] = strings.TrimSpace(*input.Title)
+			title := strings.TrimSpace(*input.Title)
+			updates["title"] = title
+			if title != strings.TrimSpace(javRec.Title) {
+				updates["title_zh"] = ""
+				updates["title_zh_source_hash"] = ""
+				updates["title_zh_translated_at"] = nil
+			}
 		}
 		if input.ReleaseUnix != nil {
 			releaseUnix := *input.ReleaseUnix
@@ -1171,7 +1256,7 @@ func buildJavFilter(ctx context.Context, idolIDs []int64, tagIDs []int64, search
 	q = q.Where("EXISTS (?)", validLocation)
 	if search != "" {
 		like := fmt.Sprintf("%%%s%%", search)
-		q = q.Where("code LIKE ? OR title LIKE ?", like, like)
+		q = q.Where("code LIKE ? OR title LIKE ? OR title_zh LIKE ?", like, like, like)
 	}
 	if filters.StudioID == 0 {
 		q = q.Where("studio_id IS NULL")
@@ -1200,6 +1285,30 @@ func buildJavFilter(ctx context.Context, idolIDs []int64, tagIDs []int64, search
 			Group("jim_solo_count.jav_id").
 			Having("COUNT(DISTINCT jim_solo_count.jav_idol_id) = 1")
 		q = q.Where("jav.id IN (?)", soloJavs)
+	}
+	if filters.SubtitleFilter == "has" || filters.SubtitleFilter == "none" {
+		subtitleLocation := common.DB.WithContext(ctx).
+			Table("video_location vl_subtitle_filter").
+			Select("1").
+			Joins("JOIN directory d_subtitle_filter ON d_subtitle_filter.id = vl_subtitle_filter.directory_id").
+			Joins("JOIN video_subtitle vs_subtitle_filter ON vs_subtitle_filter.video_location_id = vl_subtitle_filter.id").
+			Where("vl_subtitle_filter.jav_id = jav.id").
+			Where(activeLocationWhereSQL("vl_subtitle_filter", "d_subtitle_filter"))
+		subtitleLocation = applyDirectoryFilter(subtitleLocation, "vl_subtitle_filter", directoryIDs)
+		if filters.SubtitleFilter == "has" {
+			q = q.Where("EXISTS (?)", subtitleLocation)
+		} else {
+			unscannedLocation := common.DB.WithContext(ctx).
+				Table("video_location vl_subtitle_unscanned").
+				Select("1").
+				Joins("JOIN directory d_subtitle_unscanned ON d_subtitle_unscanned.id = vl_subtitle_unscanned.directory_id").
+				Where("vl_subtitle_unscanned.jav_id = jav.id").
+				Where("vl_subtitle_unscanned.subtitles_scanned_at IS NULL").
+				Where(activeLocationWhereSQL("vl_subtitle_unscanned", "d_subtitle_unscanned"))
+			unscannedLocation = applyDirectoryFilter(unscannedLocation, "vl_subtitle_unscanned", directoryIDs)
+			q = q.Where("NOT EXISTS (?)", subtitleLocation).
+				Where("NOT EXISTS (?)", unscannedLocation)
+		}
 	}
 	if len(tagIDs) > 0 {
 		q = q.
@@ -2531,7 +2640,7 @@ func ListIdolCoverOptions(ctx context.Context, idolID int64, directoryIDs []int6
 	}
 	query := common.DB.WithContext(ctx).
 		Table("jav_idol_map jim").
-		Select("j.id, j.code, j.title, CASE WHEN s.c = 1 THEN 1 ELSE 0 END AS solo").
+		Select("j.id, j.code, COALESCE(NULLIF(TRIM(j.title_zh), ''), j.title) AS title, CASE WHEN s.c = 1 THEN 1 ELSE 0 END AS solo").
 		Joins("JOIN jav j ON j.id = jim.jav_id").
 		Joins("JOIN video_location vl ON vl.jav_id = j.id").
 		Joins("JOIN directory d ON d.id = vl.directory_id").
@@ -2540,7 +2649,7 @@ func ListIdolCoverOptions(ctx context.Context, idolID int64, directoryIDs []int6
 		Where(activeLocationWhereSQL("vl", "d"))
 	query = applyDirectoryFilter(query, "vl", directoryIDs)
 	if err := query.
-		Group("j.id, j.code, j.title, solo").
+		Group("j.id, j.code, j.title, j.title_zh, solo").
 		Order("solo DESC, j.code ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("list idol cover options: %w", err)
@@ -3344,7 +3453,13 @@ func saveJavInfoTx(tx *gorm.DB, info *jav.JavInfo, now ...time.Time) (*models.Ja
 		return nil, errors.New("english JAV metadata cannot be persisted")
 	}
 	javRec.Code = info.Code
-	javRec.Title = info.Title
+	nextTitle := strings.TrimSpace(info.Title)
+	if javRec.ID != 0 && strings.TrimSpace(javRec.Title) != nextTitle {
+		javRec.TitleZH = ""
+		javRec.TitleZHSourceHash = ""
+		javRec.TitleZHTranslatedAt = nil
+	}
+	javRec.Title = nextTitle
 	javRec.ReleaseUnix = info.ReleaseUnix
 	javRec.DurationMin = info.DurationMin
 	javRec.FetchedAt = ts

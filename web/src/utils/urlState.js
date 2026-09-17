@@ -38,6 +38,11 @@ const parseJavPrefix = (raw) => {
   return /^[A-Z0-9]+$/.test(value) ? value : ''
 }
 
+const parseSubtitleFilter = (raw) => {
+  const value = String(raw || '').trim().toLowerCase()
+  return value === 'has' || value === 'none' ? value : ''
+}
+
 const parseFavoriteRating = (raw) => {
   const value = Number(String(raw || '').trim())
   if (!Number.isFinite(value) || value < 0.5 || value > 5 || !Number.isInteger(value * 2)) {
@@ -122,6 +127,7 @@ export const parseUrlState = (searchString = window.location.search, options = {
     seriesName: (sp.get('series_name') || '').trim(),
     prefix: parseJavPrefix(sp.get('prefix')),
     soloOnly: sp.get('solo') === '1',
+    subtitleFilter: parseSubtitleFilter(sp.get('subtitle')),
     favoriteRatingEnabled,
     favoriteRatingMin: favoriteRatingEnabled ? favoriteRatingMin : 0.5,
     favoriteRatingMax: favoriteRatingEnabled ? favoriteRatingMax : 5,
@@ -173,6 +179,9 @@ export const buildUrlFromState = (state, basePath = window.location.pathname) =>
     }
     if (state.jav.tab === 'list' && state.jav.soloOnly) {
       sp.set('solo', '1')
+    }
+    if (state.jav.tab === 'list' && state.jav.subtitleFilter) {
+      sp.set('subtitle', state.jav.subtitleFilter)
     }
     if (state.jav.tab === 'list' && state.jav.favoriteRatingEnabled) {
       sp.set('favorite_rating_min', String(state.jav.favoriteRatingMin))
@@ -276,6 +285,7 @@ export const normalizeUrlStateFromStore = (store, tagsByName) => {
       seriesName: (store.javSeriesName || '').trim(),
       prefix: store.javPrefix || '',
       soloOnly: Boolean(store.javSoloOnly),
+      subtitleFilter: parseSubtitleFilter(store.javSubtitleFilter),
       favoriteRatingEnabled: Boolean(store.javFavoriteRatingEnabled),
       favoriteRatingMin: store.javFavoriteRatingMin ?? 0.5,
       favoriteRatingMax: store.javFavoriteRatingMax ?? 5,

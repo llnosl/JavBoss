@@ -13,6 +13,7 @@ export default function BulkActionsMenu({
   onSelectPage,
   onPlayPage,
   onPlayAll,
+  onTranslateTitles,
 }) {
   const [anchorEl, setAnchorEl] = useState(null)
   const runAction = (action) => {
@@ -61,6 +62,11 @@ export default function BulkActionsMenu({
         <MenuItem disabled={!hasItems || !mpvEnabled || busy} onClick={() => runAction(onPlayAll)}>
           {zh('使用 MPV 播放全部', 'Play all with MPV')}
         </MenuItem>
+        {typeof onTranslateTitles === 'function' ? (
+          <MenuItem disabled={!hasItems || busy} onClick={() => runAction(onTranslateTitles)}>
+            {zh('AI 批量翻译中文标题', 'AI translate Chinese titles')}
+          </MenuItem>
+        ) : null}
       </Menu>
     </>
   )

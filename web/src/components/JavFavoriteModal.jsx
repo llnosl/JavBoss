@@ -5,6 +5,7 @@ import { Button, IconButton } from '@mui/material'
 import AppModal from '@/components/AppModal'
 import { zh } from '@/utils/i18n'
 import { getErrorMessage } from '@/utils/errors'
+import { getJavDisplayTitle } from '@/utils/jav'
 import { getIdolDisplayName } from '@/utils/javIdol'
 
 export default function JavFavoriteModal({
@@ -214,11 +215,14 @@ function favoriteItemName(entityType, item, preferChineseName) {
   if (entityType === 'idol') {
     return getIdolDisplayName(item, preferChineseName)
   }
+  if (entityType === 'jav') {
+    return (
+      [item?.code, getJavDisplayTitle(item)].filter(Boolean).join(' ') ||
+      zh('未知作品', 'Unknown JAV')
+    )
+  }
   const name = String(item?.name || '').trim()
   if (name) return name
-  if (entityType === 'jav') {
-    return [item?.code, item?.title].filter(Boolean).join(' ') || zh('未知作品', 'Unknown JAV')
-  }
   if (entityType === 'studio') return zh('未知片商', 'Unknown studio')
   if (entityType === 'series') return zh('未知系列', 'Unknown series')
   return zh('未知女优', 'Unknown idol')

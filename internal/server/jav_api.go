@@ -32,6 +32,7 @@ type javFilterQuery struct {
 	StudioID          int64
 	SeriesID          int64
 	SoloOnly          bool
+	SubtitleFilter    string
 	FavoriteGroupID   int64
 	FavoriteRatingMin *float64
 	FavoriteRatingMax *float64
@@ -45,6 +46,11 @@ func parseJavFilterQuery(c *gin.Context) (javFilterQuery, bool) {
 		Prefix:   strings.TrimSpace(c.Query("prefix")),
 		StudioID: -1,
 		SoloOnly: queryBool(c, "solo", false),
+	}
+	query.SubtitleFilter = strings.ToLower(strings.TrimSpace(c.Query("subtitle")))
+	if query.SubtitleFilter != "" && query.SubtitleFilter != "has" && query.SubtitleFilter != "none" {
+		respondLocalizedError(c, http.StatusBadRequest, "字幕筛选条件无效", "Invalid subtitle filter")
+		return query, false
 	}
 	if studioParam := strings.TrimSpace(c.Query("studio_id")); studioParam != "" {
 		parsed, err := strconv.ParseInt(studioParam, 10, 64)
@@ -112,6 +118,7 @@ func searchJav(c *gin.Context) {
 		StudioID:          filterQuery.StudioID,
 		SeriesID:          filterQuery.SeriesID,
 		SoloOnly:          filterQuery.SoloOnly,
+		SubtitleFilter:    filterQuery.SubtitleFilter,
 		FavoriteGroupID:   filterQuery.FavoriteGroupID,
 		FavoriteRatingMin: filterQuery.FavoriteRatingMin,
 		FavoriteRatingMax: filterQuery.FavoriteRatingMax,
@@ -143,6 +150,7 @@ func listJavFilterOptions(c *gin.Context) {
 			StudioID:          filterQuery.StudioID,
 			SeriesID:          filterQuery.SeriesID,
 			SoloOnly:          filterQuery.SoloOnly,
+			SubtitleFilter:    filterQuery.SubtitleFilter,
 			FavoriteGroupID:   filterQuery.FavoriteGroupID,
 			FavoriteRatingMin: filterQuery.FavoriteRatingMin,
 			FavoriteRatingMax: filterQuery.FavoriteRatingMax,

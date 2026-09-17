@@ -617,6 +617,7 @@ export async function fetchJavs({
   seriesId = null,
   prefix = '',
   soloOnly = false,
+  subtitleFilter = '',
   favoriteRatingEnabled = false,
   favoriteRatingMin = 0.5,
   favoriteRatingMax = 5,
@@ -634,6 +635,9 @@ export async function fetchJavs({
   if (seriesId) params.set('series_id', String(seriesId))
   if (prefix) params.set('prefix', prefix)
   if (soloOnly) params.set('solo', '1')
+  if (subtitleFilter === 'has' || subtitleFilter === 'none') {
+    params.set('subtitle', subtitleFilter)
+  }
   if (favoriteRatingEnabled) {
     params.set('favorite_rating_min', String(favoriteRatingMin))
     params.set('favorite_rating_max', String(favoriteRatingMax))
@@ -648,6 +652,22 @@ export async function fetchJavs({
   return res.json()
 }
 
+export async function fetchJavTitleTranslation() {
+  const res = await apiFetch('/jav/title-translation', { cache: 'no-store' })
+  if (!res.ok) throw await apiError(res)
+  return parseJSONResponse(res)
+}
+
+export async function startJavTitleTranslation({ force = false } = {}) {
+  const res = await apiFetch('/jav/title-translation', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ force: Boolean(force) }),
+  })
+  if (!res.ok) throw await apiError(res)
+  return parseJSONResponse(res)
+}
+
 export async function fetchJavFilterOptions({
   search = '',
   idolIds = [],
@@ -656,6 +676,7 @@ export async function fetchJavFilterOptions({
   seriesId = null,
   prefix = '',
   soloOnly = false,
+  subtitleFilter = '',
   favoriteRatingEnabled = false,
   favoriteRatingMin = 0.5,
   favoriteRatingMax = 5,
@@ -676,6 +697,9 @@ export async function fetchJavFilterOptions({
   if (seriesId) params.set('series_id', String(seriesId))
   if (prefix) params.set('prefix', prefix)
   if (soloOnly) params.set('solo', '1')
+  if (subtitleFilter === 'has' || subtitleFilter === 'none') {
+    params.set('subtitle', subtitleFilter)
+  }
   if (favoriteRatingEnabled) {
     params.set('favorite_rating_min', String(favoriteRatingMin))
     params.set('favorite_rating_max', String(favoriteRatingMax))

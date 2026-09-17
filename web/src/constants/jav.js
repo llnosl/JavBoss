@@ -300,6 +300,7 @@ export function activeJavSortFilters(state) {
   }
   if (String(state?.javPrefix || '').trim()) active.push('prefix')
   if (state?.javSoloOnly) active.push('solo')
+  if (state?.javSubtitleFilter) active.push('subtitle')
   if (state?.javFavoriteRatingEnabled) active.push('favorite_rating')
   if (Number(state?.javFavoriteGroupId) > 0) active.push('favorite_group')
   return active
