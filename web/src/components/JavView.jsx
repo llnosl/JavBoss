@@ -60,6 +60,9 @@ export default function JavView({
   openFileLabel,
   onRevealFile,
   onOpenScreenshots,
+  onSearchSubtitles,
+  onSubtitleImported,
+  onDeleteJavVideos,
   onManageVideoPlay,
   onManageVideoPlayAtTime,
   onManageVideoCoverChanged,
@@ -247,6 +250,9 @@ export default function JavView({
             openFileLabel={openFileLabel}
             onRevealFile={onRevealFile}
             onOpenScreenshots={onOpenScreenshots}
+            onSearchSubtitles={onSearchSubtitles}
+            onSubtitleImported={onSubtitleImported}
+            onDeleteJavVideos={onDeleteJavVideos}
             onManageVideoPlay={onManageVideoPlay}
             onManageVideoPlayAtTime={onManageVideoPlayAtTime}
             onManageVideoCoverChanged={onManageVideoCoverChanged}

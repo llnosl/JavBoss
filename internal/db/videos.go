@@ -70,6 +70,7 @@ func ListVideos(ctx context.Context, limit, offset int, tagNames []string, searc
 		Joins("JOIN video ON video.id = video_location.video_id").
 		Where(activeLocationWhereSQL("video_location", "directory")).
 		Preload("DirectoryRef").
+		Preload("Subtitles").
 		Preload("Video").
 		Preload("Video.Tags").
 		Limit(limit).
@@ -185,18 +186,20 @@ func videoFromLocation(loc models.VideoLocation) models.Video {
 	applyLocationFields(&video, loc)
 	video.Jav = loc.Jav
 	video.Locations = []models.VideoLocation{{
-		ID:           loc.ID,
-		VideoID:      loc.VideoID,
-		DirectoryID:  loc.DirectoryID,
-		RelativePath: loc.RelativePath,
-		Filename:     loc.Filename,
-		ModifiedAt:   loc.ModifiedAt,
-		JavID:        loc.JavID,
-		IsDelete:     loc.IsDelete,
-		CreatedAt:    loc.CreatedAt,
-		UpdatedAt:    loc.UpdatedAt,
-		DirectoryRef: loc.DirectoryRef,
-		Jav:          loc.Jav,
+		ID:                 loc.ID,
+		VideoID:            loc.VideoID,
+		DirectoryID:        loc.DirectoryID,
+		RelativePath:       loc.RelativePath,
+		Filename:           loc.Filename,
+		ModifiedAt:         loc.ModifiedAt,
+		JavID:              loc.JavID,
+		IsDelete:           loc.IsDelete,
+		CreatedAt:          loc.CreatedAt,
+		UpdatedAt:          loc.UpdatedAt,
+		SubtitlesScannedAt: loc.SubtitlesScannedAt,
+		DirectoryRef:       loc.DirectoryRef,
+		Jav:                loc.Jav,
+		Subtitles:          loc.Subtitles,
 	}}
 	return video
 }
@@ -398,6 +401,11 @@ func applyLocationFields(video *models.Video, loc models.VideoLocation) {
 	video.JavID = loc.JavID
 	video.Jav = loc.Jav
 	video.DirectoryRef = loc.DirectoryRef
+	video.Subtitles = loc.Subtitles
+	if video.Subtitles == nil {
+		video.Subtitles = []models.VideoSubtitle{}
+	}
+	video.SubtitlesScannedAt = loc.SubtitlesScannedAt
 }
 
 // GetVideo fetches a single video by identifier.

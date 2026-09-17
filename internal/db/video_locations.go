@@ -135,6 +135,7 @@ func GetPrimaryVideoLocation(ctx context.Context, videoID int64) (*models.VideoL
 		Where(activeLocationWhereSQL("video_location", "directory")).
 		Order("video_location.id").
 		Preload("DirectoryRef").
+		Preload("Subtitles").
 		First(&loc).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -158,6 +159,7 @@ func GetActiveVideoLocation(ctx context.Context, videoID, locationID int64) (*mo
 		Where("video_location.video_id = ?", videoID).
 		Where(activeLocationWhereSQL("video_location", "directory")).
 		Preload("DirectoryRef").
+		Preload("Subtitles").
 		First(&loc).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -238,6 +240,7 @@ func UpdateVideoLocationPath(ctx context.Context, locationID int64, relativePath
 			Model(&models.VideoLocation{}).
 			Where("id = ?", locationID).
 			Preload("DirectoryRef").
+			Preload("Subtitles").
 			Preload("Video").
 			Preload("Video.Tags").
 			First(&loc).Error; err != nil {
@@ -339,7 +342,8 @@ func preloadActiveLocationsWhere(extraWhere string) func(*gorm.DB) *gorm.DB {
 				}
 				return tx.Order("video_location.id")
 			}).
-			Preload("Locations.DirectoryRef")
+			Preload("Locations.DirectoryRef").
+			Preload("Locations.Subtitles")
 	}
 }
 

@@ -226,6 +226,10 @@ async function lookupJavOwnership(message, sender) {
 
 async function submitMagnetDownload(message) {
   const magnetUrl = validMagnetURL(message?.magnetUrl);
+  const javCode = String(message?.javCode || "")
+    .trim()
+    .slice(0, 128);
+  const overwriteExisting = message?.overwriteExisting === true;
   if (!magnetUrl) return { ok: false, error: "invalid magnet link" };
   const settings = await magnetDownloadSettings();
   if (!settings.enabled) {
@@ -253,7 +257,11 @@ async function submitMagnetDownload(message) {
     },
     credentials: "omit",
     redirect: "error",
-    body: JSON.stringify({ magnet_url: magnetUrl }),
+    body: JSON.stringify({
+      magnet_url: magnetUrl,
+      jav_code: javCode,
+      overwrite_existing: overwriteExisting,
+    }),
   });
   let payload = {};
   try {
@@ -268,6 +276,16 @@ async function submitMagnetDownload(message) {
         "API 令牌无效或已过期，请在 JavBoss 中创建或重新生成 API 令牌，再更新扩展 Token",
     };
   }
+  if (
+    response.status === 409 &&
+    payload?.requires_overwrite_confirmation === true
+  ) {
+    return {
+      ok: false,
+      requiresOverwriteConfirmation: true,
+      code: String(payload?.code || javCode),
+    };
+  }
   if (!response.ok) {
     return {
       ok: false,
@@ -278,7 +296,7 @@ async function submitMagnetDownload(message) {
       ),
     };
   }
-  return { ok: true };
+  return { ok: true, overwritten: overwriteExisting };
 }
 
 function validJavDBAssistRequest(value) {

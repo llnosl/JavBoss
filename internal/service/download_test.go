@@ -47,6 +47,43 @@ func TestParseMagnetInfoHash(t *testing.T) {
 	}
 }
 
+func TestDownloadJobFolderNameUsesInfoHash(t *testing.T) {
+	tests := []struct {
+		name     string
+		infoHash string
+		want     string
+	}{
+		{
+			name:     "hex info hash",
+			infoHash: "0123456789ABCDEF0123456789ABCDEF01234567",
+			want:     "javboss-0123456789abcdef0123456789abcdef01234567",
+		},
+		{
+			name:     "base32 info hash",
+			infoHash: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+			want:     "javboss-abcdefghijklmnopqrstuvwxyz234567",
+		},
+		{
+			name:     "trims whitespace",
+			infoHash: "  0123456789ABCDEF0123456789ABCDEF01234567  ",
+			want:     "javboss-0123456789abcdef0123456789abcdef01234567",
+		},
+		{
+			name:     "empty fallback",
+			infoHash: "  ",
+			want:     "javboss-download",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := downloadJobFolderName(test.infoHash); got != test.want {
+				t.Fatalf("downloadJobFolderName() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestFilterSmallRemoteVideos(t *testing.T) {
 	files := []downloader.RemoteFile{
 		{Name: "large.mp4", Size: 51 * 1024 * 1024},

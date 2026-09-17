@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IconButton, Popper, Rating, Tooltip } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import CheckBoxOutlineBlankRoundedIcon from '@mui/icons-material/CheckBoxOutlineBlankRounded'
 import CheckBoxRoundedIcon from '@mui/icons-material/CheckBoxRounded'
 import { MovieEdit } from '@mui/icons-material'
@@ -17,6 +18,9 @@ import RemoveCircleOutlineRoundedIcon from '@mui/icons-material/RemoveCircleOutl
 import SearchIcon from '@mui/icons-material/Search'
 import StarBorderRoundedIcon from '@mui/icons-material/StarBorderRounded'
 import StarRoundedIcon from '@mui/icons-material/StarRounded'
+import SubtitlesOutlinedIcon from '@mui/icons-material/SubtitlesOutlined'
+import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined'
+import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined'
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined'
 import VideoLibraryOutlinedIcon from '@mui/icons-material/VideoLibraryOutlined'
 
@@ -34,6 +38,13 @@ import {
 } from '@/api'
 import JavDetailModal from '@/components/JavDetailModal'
 import AppModal from '@/components/AppModal'
+import SubtitleImportModal from '@/components/SubtitleImportModal'
+import SubtitleGenerateModal from '@/components/SubtitleGenerateModal'
+import SubtitlePathPopover from '@/components/SubtitlePathPopover'
+import {
+  subtitleGenerationClass,
+  subtitleGenerationLabel,
+} from '@/components/SubtitleGenerationTasks'
 import JavIdolCoverModal from '@/components/JavIdolCoverModal'
 import { IdolCard, JavIdolEditModal, getIdolCardLayoutProps } from '@/components/JavIdolGrid'
 import { SeriesCard } from '@/components/JavSeriesView'
@@ -48,6 +59,25 @@ import { getJavTagDisplayName, withJavTagDisplayName } from '@/utils/javTag'
 import { useStore, videoSelectionKey } from '@/store'
 import { zh } from '@/utils/i18n'
 import { getErrorMessage } from '@/utils/errors'
+import { subtitleLanguageLabels, summarizeJavSubtitles } from '@/utils/subtitles'
+import { useSubtitleGenerations } from '@/subtitleGeneration'
+
+function latestJavSubtitleGeneration(item, jobs) {
+  const keys = new Set()
+  for (const video of Array.isArray(item?.videos) ? item.videos : []) {
+    const videoID = Number(video?.id)
+    if (!videoID) continue
+    const locations =
+      Array.isArray(video?.locations) && video.locations.length
+        ? video.locations
+        : [{ id: video?.location_id }]
+    for (const location of locations) {
+      const locationID = Number(location?.id || video?.location_id)
+      if (locationID) keys.add(`${videoID}:${locationID}`)
+    }
+  }
+  return (jobs || []).find((job) => keys.has(`${job.video_id}:${job.location_id}`)) || null
+}
 
 function DurationIcon() {
   return (
@@ -121,6 +151,9 @@ export default function JavGrid({
   onOpenFile,
   openFileLabel,
   onOpenScreenshots,
+  onSearchSubtitles,
+  onSubtitleImported,
+  onDeleteJavVideos,
   onManageVideoPlay,
   onManageVideoPlayAtTime,
   onManageVideoCoverChanged,
@@ -133,6 +166,7 @@ export default function JavGrid({
   onManageVideoDelete,
   onManageVideoTagClick,
 }) {
+  const { jobs: subtitleGenerationJobs } = useSubtitleGenerations()
   const directoryVisibilityKey = useStore((state) =>
     (state.directories || [])
       .map((directory) => `${directory.id}:${directory.enabled !== false ? '1' : '0'}`)
@@ -166,6 +200,8 @@ export default function JavGrid({
   const seriesPreviewInflightRef = useRef(new Map())
   const [coverPreview, setCoverPreview] = useState(null)
   const [videoManagerItem, setVideoManagerItem] = useState(null)
+  const [subtitleImportItem, setSubtitleImportItem] = useState(null)
+  const [subtitleGenerateItem, setSubtitleGenerateItem] = useState(null)
   const activeVideoManagerItem = useMemo(() => {
     if (!videoManagerItem) return null
     const managerID = Number(videoManagerItem?.id)
@@ -299,6 +335,7 @@ export default function JavGrid({
           <JavCard
             key={item.id || item.code}
             item={item}
+            subtitleGenerationJob={latestJavSubtitleGeneration(item, subtitleGenerationJobs)}
             checked={selectedIds?.has(Number(item.id)) || false}
             onToggleSelect={onToggleSelect}
             selectionDisabled={selectionDisabled}
@@ -316,6 +353,11 @@ export default function JavGrid({
             onOpenFile={onOpenFile}
             openFileLabel={openFileLabel}
             onOpenScreenshots={onOpenScreenshots}
+            onSearchSubtitles={onSearchSubtitles}
+            onImportSubtitles={setSubtitleImportItem}
+            onGenerateSubtitles={setSubtitleGenerateItem}
+            onSubtitleUpdated={onSubtitleImported}
+            onDeleteVideos={onDeleteJavVideos}
             onOpenVideoManager={setVideoManagerItem}
             onManageVideoPlay={onManageVideoPlay}
             onManageVideoPlayAtTime={onManageVideoPlayAtTime}
@@ -348,6 +390,16 @@ export default function JavGrid({
       {coverPreview ? (
         <CoverPreviewModal preview={coverPreview} onClose={() => setCoverPreview(null)} />
       ) : null}
+      <SubtitleImportModal
+        item={subtitleImportItem}
+        onClose={() => setSubtitleImportItem(null)}
+        onImported={onSubtitleImported}
+      />
+      <SubtitleGenerateModal
+        item={subtitleGenerateItem}
+        onClose={() => setSubtitleGenerateItem(null)}
+        onGenerated={onSubtitleImported}
+      />
       <JavVideoManagerModal
         open={Boolean(videoManagerItem)}
         item={activeVideoManagerItem}
@@ -2161,6 +2213,7 @@ function JavTagList({ tags, maxRows, buildTagFilterHref, onTagClick, onFilterLin
 
 function JavCard({
   item,
+  subtitleGenerationJob,
   checked = false,
   onToggleSelect,
   selectionDisabled = false,
@@ -2178,6 +2231,11 @@ function JavCard({
   onOpenFile,
   openFileLabel,
   onOpenScreenshots,
+  onSearchSubtitles,
+  onImportSubtitles,
+  onGenerateSubtitles,
+  onSubtitleUpdated,
+  onDeleteVideos,
   onOpenVideoManager,
   onManageVideoPlay,
   onManageVideoPlayAtTime,
@@ -2212,6 +2270,7 @@ function JavCard({
   const [editorOpen, setEditorOpen] = useState(false)
   const [customTagEditorOpen, setCustomTagEditorOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [deletingVideos, setDeletingVideos] = useState(false)
   const coverBase = code ? `/jav/${encodeURIComponent(code)}/cover` : null
   const cover = coverBase ? `${coverBase}${coverVersion ? `?v=${coverVersion}` : ''}` : null
 
@@ -2242,6 +2301,34 @@ function JavCard({
         }
       : undefined
   const videos = item?.videos || []
+  const subtitleSummary = summarizeJavSubtitles(item)
+  const subtitleLanguageText = subtitleSummary.languages
+    .map((language) => subtitleLanguageLabels(language))
+    .filter(Boolean)
+    .map((labels) => zh(labels[0], labels[1]))
+    .join(' / ')
+  const subtitleBadgeText = subtitleSummary.hasSubtitles
+    ? subtitleLanguageText || zh('有字幕', 'Subtitles')
+    : subtitleSummary.allScanned
+      ? zh('无字幕', 'No subtitles')
+      : subtitleSummary.partiallyScanned
+        ? zh('部分未检测', 'Partially scanned')
+        : zh('字幕未检测', 'Subtitles pending')
+  const subtitleDetailText = zh(
+    `字幕：${subtitleBadgeText}；已检测视频 ${subtitleSummary.scannedVideoCount}/${subtitleSummary.videoCount}；内封 ${subtitleSummary.embeddedCount}，外挂 ${subtitleSummary.externalCount}`,
+    `Subtitles: ${subtitleBadgeText}; scanned videos ${subtitleSummary.scannedVideoCount}/${subtitleSummary.videoCount}; embedded ${subtitleSummary.embeddedCount}, external ${subtitleSummary.externalCount}`
+  )
+  const subtitleJobText = subtitleGenerationLabel(subtitleGenerationJob)
+  const subtitleJobDetail = subtitleGenerationJob
+    ? [
+        subtitleJobText,
+        subtitleGenerationJob.filename,
+        subtitleGenerationJob.error,
+        subtitleGenerationJob.subtitle,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
   const openableVideos = videos.filter((video) =>
     Boolean(video?.path && (video?.directory?.path || video?.directory_path))
   )
@@ -2350,6 +2437,32 @@ function JavCard({
   const handleOpenVideoManager = (event) => {
     event.stopPropagation()
     onOpenVideoManager?.(item)
+  }
+
+  const handleFindSubtitles = (event) => {
+    event.stopPropagation()
+    onSearchSubtitles?.(item)
+  }
+
+  const handleImportSubtitles = (event) => {
+    event.stopPropagation()
+    onImportSubtitles?.(item)
+  }
+
+  const handleGenerateSubtitles = (event) => {
+    event.stopPropagation()
+    onGenerateSubtitles?.(item)
+  }
+
+  const handleDeleteVideos = async (event) => {
+    event.stopPropagation()
+    if (deletingVideos || !onDeleteVideos) return
+    setDeletingVideos(true)
+    try {
+      await onDeleteVideos(item)
+    } finally {
+      setDeletingVideos(false)
+    }
   }
 
   const handleOpenCoverPreview = (event) => {
@@ -3035,6 +3148,31 @@ function JavCard({
               </Tooltip>
               <span>{durationText || zh('时长未知', 'Unknown duration')}</span>
             </span>
+            <SubtitlePathPopover
+              videos={videos}
+              detailText={subtitleDetailText}
+              onUpdated={onSubtitleUpdated}
+            >
+              <span
+                className={`inline-flex shrink-0 cursor-default items-center gap-1 rounded px-1 py-0.5 font-medium ${
+                  subtitleSummary.hasSubtitles
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                <SubtitlesOutlinedIcon sx={{ fontSize: 15 }} />
+                <span>{subtitleBadgeText}</span>
+              </span>
+            </SubtitlePathPopover>
+            {subtitleGenerationJob ? (
+              <Tooltip title={subtitleJobDetail} arrow>
+                <span
+                  className={`inline-flex shrink-0 items-center rounded px-1 py-0.5 font-medium ${subtitleGenerationClass(subtitleGenerationJob)}`}
+                >
+                  {subtitleJobText}
+                </span>
+              </Tooltip>
+            ) : null}
             {studioText ? (
               <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                 <Tooltip title={zh('片商', 'Studio')} arrow>
@@ -3262,6 +3400,57 @@ function JavCard({
                   >
                     <VideoLibraryOutlinedIcon fontSize="inherit" />
                   </IconButton>
+                </Tooltip>
+                <Tooltip title={zh('寻找字幕', 'Find subtitles')}>
+                  <IconButton
+                    size="small"
+                    onClick={handleFindSubtitles}
+                    aria-label={zh('寻找字幕', 'Find subtitles')}
+                    className="h-6 w-6"
+                  >
+                    <SubtitlesOutlinedIcon fontSize="inherit" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={zh('导入字幕', 'Import subtitles')}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleImportSubtitles}
+                      disabled={!Array.isArray(item?.videos) || item.videos.length === 0}
+                      aria-label={zh('导入字幕', 'Import subtitles')}
+                      className="h-6 w-6"
+                    >
+                      <UploadFileOutlinedIcon fontSize="inherit" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title={zh('生成字幕', 'Generate subtitles')}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleGenerateSubtitles}
+                      disabled={!Array.isArray(item?.videos) || item.videos.length === 0}
+                      aria-label={zh('生成字幕', 'Generate subtitles')}
+                      className="h-6 w-6 text-violet-600"
+                    >
+                      <AutoAwesomeOutlinedIcon fontSize="inherit" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title={zh('删除 JAV 对应的视频文件', 'Delete JAV video files')}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={handleDeleteVideos}
+                      disabled={
+                        deletingVideos || !Array.isArray(item?.videos) || item.videos.length === 0
+                      }
+                      aria-label={zh('删除 JAV 对应的视频文件', 'Delete JAV video files')}
+                      className="h-6 w-6 text-red-600 hover:bg-red-50"
+                    >
+                      <DeleteOutlineRoundedIcon fontSize="inherit" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </div>
               {Array.isArray(item?.videos) && item.videos.length > 1 && (

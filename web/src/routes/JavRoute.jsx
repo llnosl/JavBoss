@@ -258,6 +258,9 @@ function JavListRoute({
   onOpenSeriesFavorites,
   onOpenFile,
   onOpenScreenshots,
+  onSearchSubtitles,
+  onSubtitleImported,
+  onDeleteJavVideos,
   onManageVideoPlay,
   onManageVideoPlayAtTime,
   onManageVideoCoverChanged,
@@ -312,6 +315,9 @@ function JavListRoute({
       openFileLabel={alternatePlayerLabel}
       onRevealFile={onRevealFile}
       onOpenScreenshots={onOpenScreenshots}
+      onSearchSubtitles={onSearchSubtitles}
+      onSubtitleImported={onSubtitleImported}
+      onDeleteJavVideos={onDeleteJavVideos}
       onManageVideoPlay={onManageVideoPlay}
       onManageVideoPlayAtTime={onManageVideoPlayAtTime}
       onManageVideoCoverChanged={onManageVideoCoverChanged}

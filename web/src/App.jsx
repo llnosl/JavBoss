@@ -61,6 +61,7 @@ import JavSelectionTagsModal from '@/components/JavSelectionTagsModal'
 import JavSelectionFavoritesModal from '@/components/JavSelectionFavoritesModal'
 import SelectionJavTagsModal from '@/components/SelectionJavTagsModal'
 import SelectionTagsModal from '@/components/SelectionTagsModal'
+import SubtitleGenerationTasks from '@/components/SubtitleGenerationTasks'
 import TagPickerModal from '@/components/TagPickerModal'
 import Toast from '@/components/Toast'
 import SideTabs from '@/components/SideTabs'
@@ -504,6 +505,45 @@ export default function App() {
   const closeCenterToast = useCallback(() => {
     setCenterToastMessage('')
   }, [])
+  const handleSearchSubtitles = useCallback(
+    (target) => {
+      const code = String(
+        target?.code || target?.jav?.code || target?.locations?.[0]?.jav?.code || ''
+      ).trim()
+      const filename = String(target?.filename || '').trim()
+      const keyword = code || filename
+      if (!keyword) {
+        showCenterToast(zh('没有可用于寻找字幕的番号或文件名。', 'No subtitle search term found.'))
+        return
+      }
+      const query = `${keyword} 字幕 srt ass`
+      window.open(
+        `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+        '_blank',
+        'noopener,noreferrer'
+      )
+      showCenterToast(
+        zh(
+          `已按“${keyword}”打开字幕网页搜索；自动字幕源接入后将在这里显示候选并下载。`,
+          `Opened a web subtitle search for “${keyword}”; provider results and downloads will appear here after integration.`
+        )
+      )
+    },
+    [showCenterToast]
+  )
+  const handleSubtitleImported = useCallback(
+    (result) => {
+      showToast(
+        result?.status === 'completed'
+          ? zh('字幕生成完成', 'Subtitle generated')
+          : result?.status === 'path_updated'
+            ? zh('字幕路径已更新', 'Subtitle path updated')
+            : zh('字幕导入成功', 'Subtitle imported')
+      )
+      void Promise.all([loadJavs({ force: true }), loadVideos({ force: true })])
+    },
+    [loadJavs, loadVideos, showToast]
+  )
   const ensureMPVPlaylistAvailable = useCallback(() => {
     if (!remoteAccess || clientMode) return true
     showCenterToast(
@@ -821,6 +861,83 @@ export default function App() {
       }
     },
     [loadVideos, showCenterToast]
+  )
+
+  const handleDeleteJavVideos = useCallback(
+    async (item) => {
+      const seen = new Set()
+      const targets = (Array.isArray(item?.videos) ? item.videos : [])
+        .map((video) => {
+          const videoId = Number(video?.id)
+          const locationId = Number(video?.location_id || video?.locations?.[0]?.id)
+          if (
+            !Number.isFinite(videoId) ||
+            videoId <= 0 ||
+            !Number.isFinite(locationId) ||
+            locationId <= 0
+          ) {
+            return null
+          }
+          const key = `${videoId}:${locationId}`
+          if (seen.has(key)) return null
+          seen.add(key)
+          return {
+            videoId,
+            locationId,
+            label: String(video?.filename || video?.path || `#${videoId}`),
+          }
+        })
+        .filter(Boolean)
+
+      if (targets.length === 0) {
+        showCenterToast(
+          zh(
+            '无法删除：这个 JAV 没有可用的视频文件位置',
+            'Cannot delete: this JAV has no video file location'
+          )
+        )
+        return
+      }
+
+      const code = String(item?.code || '').trim() || zh('这个 JAV', 'this JAV')
+      const confirmed = window.confirm(
+        zh(
+          `确定将“${code}”对应的 ${targets.length} 个视频文件移到回收站吗？\n\n此操作不会删除 JAV 元数据和邻近的字幕文件。`,
+          `Move ${targets.length} video file(s) for “${code}” to the Recycle Bin?\n\nThis does not delete JAV metadata or neighboring subtitle files.`
+        )
+      )
+      if (!confirmed) return
+
+      const failed = []
+      let deletedCount = 0
+      for (const target of targets) {
+        try {
+          await deleteVideoLocation(target.videoId, target.locationId)
+          deletedCount += 1
+        } catch (err) {
+          failed.push({ target, err })
+        }
+      }
+
+      await Promise.all([loadJavs({ force: true }), loadVideos({ force: true })])
+      if (failed.length > 0) {
+        console.error('delete JAV videos failed', failed)
+        showCenterToast(
+          zh(
+            `已删除 ${deletedCount} 个视频，${failed.length} 个删除失败：${getErrorMessage(failed[0].err)}`,
+            `Deleted ${deletedCount} video(s); ${failed.length} failed: ${getErrorMessage(failed[0].err)}`
+          )
+        )
+        return
+      }
+      showToast(
+        zh(
+          `已将“${code}”的 ${deletedCount} 个视频移到回收站`,
+          `Moved ${deletedCount} video(s) for “${code}” to the Recycle Bin`
+        )
+      )
+    },
+    [loadJavs, loadVideos, showCenterToast, showToast]
   )
 
   const handleOpenScrapeSettings = useCallback((video) => {
@@ -4386,6 +4503,9 @@ export default function App() {
               alternatePlayerLabel,
               onRevealFile: handleJavRevealFile,
               onOpenScreenshots: handleJavOpenScreenshots,
+              onSearchSubtitles: handleSearchSubtitles,
+              onSubtitleImported: handleSubtitleImported,
+              onDeleteJavVideos: handleDeleteJavVideos,
               onManageVideoPlay: handleOpenPlayer,
               onManageVideoPlayAtTime: playVideoFromTime,
               onManageVideoCoverChanged: handleVideoCoverChanged,
@@ -4446,6 +4566,8 @@ export default function App() {
             setTagPickerFor={openTagEditor}
             onOpenScreenshots={openVideoScreenshots}
             onOpenScrapeSettings={handleOpenScrapeSettings}
+            onSearchSubtitles={handleSearchSubtitles}
+            onSubtitleUpdated={handleSubtitleImported}
             onRenameVideo={handleRenameVideo}
             onDeleteVideo={handleDeleteVideo}
             onTagClick={handleVideoTagClick}
@@ -5073,6 +5195,7 @@ export default function App() {
         message={centerToastMessage}
         onClose={closeCenterToast}
       />
+      <SubtitleGenerationTasks />
     </div>
   )
 }

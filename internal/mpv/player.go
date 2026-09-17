@@ -33,6 +33,7 @@ type PlayOptions struct {
 	VideoID                int64
 	StartTimeSec           float64
 	EnableNetworkThumbnail bool
+	SubtitleFiles          []string
 }
 
 // PlaylistItem describes one file in an MPV playlist.
@@ -322,7 +323,7 @@ func (s *playerSession) playVideoLocked(path string, options PlayOptions) error 
 	if !shouldRestoreWindowBeforeLoad() {
 		time.Sleep(darwinAfterLoadWindowRestoreDelay)
 	}
-	for _, command := range buildAfterLoadCommands() {
+	for _, command := range buildAfterLoadCommands(options) {
 		if err := runIPCCommand(s.ipcPath, command); err != nil {
 			if isOptionalPlaybackCommand(command) {
 				logging.Error("optional mpv ipc command ignored: %v", err)
@@ -335,7 +336,9 @@ func (s *playerSession) playVideoLocked(path string, options PlayOptions) error 
 }
 
 func (s *playerSession) playPlaylistLocked(items []PlaylistItem) error {
-	commands, err := buildBeforeLoadCommands(items[0].Options)
+	playlistOptions := items[0].Options
+	playlistOptions.SubtitleFiles = nil
+	commands, err := buildBeforeLoadCommands(playlistOptions)
 	if err != nil {
 		return err
 	}
@@ -395,7 +398,7 @@ func (s *playerSession) playPlaylistLocked(items []PlaylistItem) error {
 	if !shouldRestoreWindowBeforeLoad() {
 		time.Sleep(darwinAfterLoadWindowRestoreDelay)
 	}
-	for _, command := range buildAfterLoadCommands() {
+	for _, command := range buildAfterLoadCommands(playlistOptions) {
 		if err := runIPCCommand(s.ipcPath, command); err != nil {
 			if isOptionalPlaybackCommand(command) {
 				logging.Error("optional mpv ipc command ignored: %v", err)
@@ -477,6 +480,7 @@ func buildCommandArgs(path string, options PlayOptions, ipcPath string) (*exec.C
 	args = append(args, buildPlaybackStartArgs(options)...)
 	args = append(args, "--input-conf="+inputConfPath)
 	if strings.TrimSpace(path) != "" {
+		args = append(args, buildSubtitleArgs(options)...)
 		args = append(args, "--", path)
 	}
 	return exec.Command(mpvPath, args...), nil
@@ -509,7 +513,7 @@ func playbackIPCPath() (string, error) {
 }
 
 func buildBeforeLoadCommands(options PlayOptions) ([][]any, error) {
-	commands := make([][]any, 0, 5)
+	commands := make([][]any, 0, 6)
 	if loadConfiguredPlayerResumePlayback() {
 		commands = append(commands, []any{"write-watch-later-config"})
 	}
@@ -518,6 +522,7 @@ func buildBeforeLoadCommands(options PlayOptions) ([][]any, error) {
 	}
 	commands = append(commands,
 		[]any{"set_property", "pause", false},
+		[]any{"set_property", "sub-auto", subtitleAutoMode(options)},
 		[]any{"set_property", "screenshot-template", playbackScreenshotTemplate},
 	)
 
@@ -537,11 +542,22 @@ func buildBeforeLoadCommands(options PlayOptions) ([][]any, error) {
 	return commands, nil
 }
 
-func buildAfterLoadCommands() [][]any {
-	if shouldRestoreWindowBeforeLoad() {
-		return nil
+func buildAfterLoadCommands(options PlayOptions) [][]any {
+	files := cleanSubtitleFiles(options.SubtitleFiles)
+	commands := make([][]any, 0, len(files)+1)
+	// SubtitleFiles is ordered by preference. Load the remaining tracks first,
+	// then explicitly select the preferred track so a later sub-add cannot
+	// replace it during mpv's automatic track selection.
+	for index := 1; index < len(files); index++ {
+		commands = append(commands, []any{"sub-add", files[index], "auto"})
 	}
-	return [][]any{{"set_property", "window-minimized", false}}
+	if len(files) > 0 {
+		commands = append(commands, []any{"sub-add", files[0], "select"})
+	}
+	if !shouldRestoreWindowBeforeLoad() {
+		commands = append(commands, []any{"set_property", "window-minimized", false})
+	}
+	return commands
 }
 
 func shouldRestoreWindowBeforeLoad() bool {
@@ -557,7 +573,7 @@ func isOptionalPlaybackCommand(command []any) bool {
 		return false
 	}
 	name, _ := command[0].(string)
-	if name == "write-watch-later-config" {
+	if name == "write-watch-later-config" || name == "sub-add" {
 		return true
 	}
 	if len(command) < 2 {
@@ -565,6 +581,49 @@ func isOptionalPlaybackCommand(command []any) bool {
 	}
 	property, _ := command[1].(string)
 	return name == "set_property" && property == "window-minimized"
+}
+
+func buildSubtitleArgs(options PlayOptions) []string {
+	files := cleanSubtitleFiles(options.SubtitleFiles)
+	if len(files) == 0 {
+		return nil
+	}
+	args := make([]string, 0, len(files)+1)
+	args = append(args, "--sub-auto=no")
+	// mpv selects the last explicitly supplied subtitle file. Keep the first
+	// (preferred) entry last so one-shot and reusable playback behave alike.
+	for index := len(files) - 1; index >= 0; index-- {
+		args = append(args, "--sub-file="+files[index])
+	}
+	return args
+}
+
+func subtitleAutoMode(options PlayOptions) string {
+	if len(cleanSubtitleFiles(options.SubtitleFiles)) > 0 {
+		return "no"
+	}
+	return "fuzzy"
+}
+
+func cleanSubtitleFiles(files []string) []string {
+	cleaned := make([]string, 0, len(files))
+	seen := make(map[string]struct{}, len(files))
+	for _, path := range files {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		key := filepath.Clean(path)
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		cleaned = append(cleaned, path)
+	}
+	return cleaned
 }
 
 func buildLoadFileCommand(path string, options PlayOptions) ([]any, error) {

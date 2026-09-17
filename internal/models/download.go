@@ -38,8 +38,9 @@ type DownloaderProviderSettings struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// DownloadJob is a persistent magnet download job with no JAV association.
-// MagnetURL is stored with the standalone task and exposed by the download list for copying.
+// DownloadJob is a persistent magnet download job. JavCode records the code
+// detected when the task was created so duplicate and overwrite intent survive
+// asynchronous processing. MagnetURL is exposed by the download list for copying.
 type DownloadJob struct {
 	ID                int64      `json:"id" gorm:"primaryKey"`
 	DownloadDirectory string     `json:"directory_path" gorm:"not null;index;index:idx_download_job_target_hash,priority:1"`
@@ -47,6 +48,8 @@ type DownloadJob struct {
 	InfoHash          string     `json:"info_hash" gorm:"not null;index:idx_download_job_target_hash,priority:2"`
 	MagnetURL         string     `json:"-" gorm:"type:text;not null"`
 	MagnetName        string     `json:"magnet_name" gorm:"not null;default:''"`
+	JavCode           string     `json:"jav_code" gorm:"not null;default:'';index"`
+	OverwriteExisting bool       `json:"overwrite_existing" gorm:"not null;default:false"`
 	RemoteFolder      string     `json:"remote_folder" gorm:"not null;default:''"`
 	RemoteTaskID      string     `json:"remote_task_id" gorm:"not null;default:''"`
 	Status            string     `json:"status" gorm:"not null;default:queued;index"`

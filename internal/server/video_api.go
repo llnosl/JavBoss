@@ -488,14 +488,16 @@ func playVideoFile(c *gin.Context) {
 		return
 	}
 	videoID := resolvePlaybackVideoID(c.Request.Context(), req.VideoID, dirPath, fullPath)
+	location := resolvePlaybackLocation(c.Request.Context(), videoID, req.LocationID, fullPath)
 	dataDir := ""
 	if common.AppConfig != nil {
 		dataDir = filepath.Dir(common.AppConfig.DatabasePath)
 	}
 	if err := mpv.PlayVideo(fullPath, mpv.PlayOptions{
-		DataDir:      dataDir,
-		VideoID:      videoID,
-		StartTimeSec: req.StartTimeSec,
+		DataDir:       dataDir,
+		VideoID:       videoID,
+		StartTimeSec:  req.StartTimeSec,
+		SubtitleFiles: externalSubtitlePlaybackFiles(location, fullPath),
 	}); err != nil {
 		logging.Error("play video file error: %v", err)
 		if strings.Contains(err.Error(), "mpv not found") {
@@ -580,8 +582,9 @@ func playVideoPlaylist(c *gin.Context) {
 				}
 			},
 			Options: mpv.PlayOptions{
-				DataDir: dataDir,
-				VideoID: requested.VideoID,
+				DataDir:       dataDir,
+				VideoID:       requested.VideoID,
+				SubtitleFiles: externalSubtitlePlaybackFiles(location, fullPath),
 			},
 		})
 	}
@@ -1254,9 +1257,97 @@ func isSafeVideoFilename(name string) bool {
 
 type videoPathRequest struct {
 	VideoID      int64   `json:"video_id"`
+	LocationID   int64   `json:"location_id"`
 	Path         string  `json:"path"`
 	DirPath      string  `json:"dir_path"`
 	StartTimeSec float64 `json:"start_time"`
+}
+
+func resolvePlaybackLocation(ctx context.Context, videoID, locationID int64, fullPath string) *models.VideoLocation {
+	if videoID <= 0 {
+		return nil
+	}
+	var location *models.VideoLocation
+	var err error
+	if locationID > 0 {
+		location, err = dbpkg.GetActiveVideoLocation(ctx, videoID, locationID)
+	} else {
+		location, err = dbpkg.GetPrimaryVideoLocation(ctx, videoID)
+	}
+	if err != nil {
+		logging.Error("load playback video location error: %v", err)
+		return nil
+	}
+	if location == nil {
+		return nil
+	}
+	locationPath, _, err := resolveVideoPath(location.RelativePath, location.DirectoryRef.Path)
+	if err != nil || !sameCleanPath(locationPath, fullPath) {
+		return nil
+	}
+	return location
+}
+
+func externalSubtitlePlaybackFiles(location *models.VideoLocation, videoPath string) []string {
+	if location == nil || strings.TrimSpace(location.DirectoryRef.Path) == "" {
+		return nil
+	}
+	locationPath, _, err := resolveVideoPath(location.RelativePath, location.DirectoryRef.Path)
+	if err != nil || !sameCleanPath(locationPath, videoPath) {
+		return nil
+	}
+
+	type playbackSubtitle struct {
+		path     string
+		priority int
+	}
+	candidates := make([]playbackSubtitle, 0, len(location.Subtitles))
+	for _, subtitle := range location.Subtitles {
+		if subtitle.Kind != models.SubtitleKindExternal || strings.TrimSpace(subtitle.RelativePath) == "" {
+			continue
+		}
+		path, _, err := resolveVideoPath(subtitle.RelativePath, location.DirectoryRef.Path)
+		if err != nil {
+			logging.Error("resolve playback subtitle path error: %v", err)
+			continue
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				logging.Error("stat playback subtitle error: %v", err)
+			}
+			continue
+		}
+		candidates = append(candidates, playbackSubtitle{
+			path:     path,
+			priority: playbackSubtitleLanguagePriority(subtitle.Language),
+		})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].priority < candidates[j].priority
+	})
+	files := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		files = append(files, candidate.path)
+	}
+	return files
+}
+
+func playbackSubtitleLanguagePriority(language string) int {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "zh-cn", "chs":
+		return 0
+	case "zh", "chi", "zho":
+		return 1
+	case "zh-tw", "cht":
+		return 2
+	case "en", "eng":
+		return 3
+	case "ja", "jp", "jpn":
+		return 4
+	default:
+		return 5
+	}
 }
 
 type videoPlaylistItemRequest struct {

@@ -8,6 +8,9 @@ import (
 	"javboss/internal/clouddrive"
 	cloudpb "javboss/internal/clouddrive/proto"
 	"javboss/internal/downloader"
+
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 )
 
 type Client struct {
@@ -49,9 +52,25 @@ func (c *Client) StartOffline(ctx context.Context, magnet, folder, infoHash stri
 	return strings.ToLower(strings.TrimSpace(infoHash)), nil
 }
 
-func (c *Client) OfflineStatus(ctx context.Context, _ string, folder, infoHash string) (*downloader.OfflineStatus, error) {
+func (c *Client) OfflineStatus(ctx context.Context, taskID, folder, infoHash string) (*downloader.OfflineStatus, error) {
 	files, err := c.client.OfflineFiles(ctx, folder)
 	if err != nil {
+		// Some CloudDrive2 providers (notably Xunlei) can submit offline
+		// downloads but do not implement ListOfflineFilesByPath. In that case,
+		// use the isolated job folder as the completion signal instead.
+		if grpcstatus.Code(err) == codes.Unimplemented {
+			remoteFiles, walkErr := c.WalkFiles(ctx, folder)
+			if walkErr != nil {
+				return nil, walkErr
+			}
+			if len(remoteFiles) > 0 {
+				return &downloader.OfflineStatus{State: downloader.OfflineComplete}, nil
+			}
+			if strings.TrimSpace(taskID) == "" {
+				return &downloader.OfflineStatus{State: downloader.OfflineNotFound}, nil
+			}
+			return &downloader.OfflineStatus{State: downloader.OfflineRunning}, nil
+		}
 		return nil, err
 	}
 	for _, file := range files {

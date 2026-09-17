@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -254,20 +255,40 @@ func listDownloadJobs(c *gin.Context) {
 
 func createDownloadJob(c *gin.Context) {
 	var request struct {
-		MagnetURL string `json:"magnet_url"`
+		MagnetURL         string `json:"magnet_url"`
+		JavCode           string `json:"jav_code"`
+		OverwriteExisting bool   `json:"overwrite_existing"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		respondLocalizedError(c, http.StatusBadRequest, "下载请求格式不正确", "Invalid download request")
 		return
 	}
-	enqueueDownloadJob(c, request.MagnetURL)
+	enqueueDownloadJob(c, request.MagnetURL, request.JavCode, request.OverwriteExisting)
 }
 
-func enqueueDownloadJob(c *gin.Context, magnetURL string) {
+var downloadFC2CodePattern = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(fc2)[-_ ]?(ppv)[-_ ]?(\d{5,8})(?:[^a-z0-9]|$)`)
+
+func enqueueDownloadJob(c *gin.Context, magnetURL, requestedJavCode string, overwriteExisting bool) {
 	magnetURL = strings.TrimSpace(magnetURL)
 	infoHash, err := service.ParseMagnetInfoHash(magnetURL)
 	if err != nil {
 		respondLocalizedError(c, http.StatusBadRequest, "磁力链接格式不正确", "Invalid magnet link")
+		return
+	}
+	magnetName := service.ParseMagnetName(magnetURL)
+	javCode, duplicate, err := resolveDownloadJavDuplicate(c.Request.Context(), requestedJavCode, magnetName)
+	if err != nil {
+		respondLocalizedError(c, http.StatusInternalServerError, "校验番号是否已存在失败", "Failed to check whether the JAV code already exists")
+		return
+	}
+	if duplicate && !overwriteExisting {
+		c.JSON(http.StatusConflict, gin.H{
+			"error_zh":                        "番号 " + javCode + " 已存在，是否覆盖？",
+			"error_en":                        "JAV code " + javCode + " already exists. Overwrite it?",
+			"code":                            javCode,
+			"duplicate":                       true,
+			"requires_overwrite_confirmation": true,
+		})
 		return
 	}
 	settings, err := db.GetDownloaderSettings(c.Request.Context())
@@ -282,7 +303,8 @@ func enqueueDownloadJob(c *gin.Context, magnetURL string) {
 	}
 	job := models.DownloadJob{
 		DownloadDirectory: downloadDirectory, InfoHash: infoHash, MagnetURL: magnetURL,
-		MagnetName: service.ParseMagnetName(magnetURL), Provider: models.DownloaderProviderCloudDrive2,
+		MagnetName: magnetName, JavCode: javCode, OverwriteExisting: overwriteExisting,
+		Provider: models.DownloaderProviderCloudDrive2,
 	}
 	if err := db.CreateDownloadJob(c.Request.Context(), &job); err != nil {
 		respondLocalizedError(c, http.StatusInternalServerError, "创建下载任务失败", "Failed to create the download job")
@@ -290,6 +312,50 @@ func enqueueDownloadJob(c *gin.Context, magnetURL string) {
 	}
 	service.WakeDownloadManager()
 	c.JSON(http.StatusCreated, job)
+}
+
+func resolveDownloadJavDuplicate(ctx context.Context, requestedCode, magnetName string) (string, bool, error) {
+	candidates := make([]string, 0, 4)
+	seen := make(map[string]struct{})
+	appendCandidate := func(code string) {
+		code = strings.ToUpper(strings.TrimSpace(code))
+		key := strings.NewReplacer("-", "", "_", "", " ", "").Replace(code)
+		if key == "" {
+			return
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		candidates = append(candidates, code)
+	}
+	appendCodes := func(value string) {
+		if match := downloadFC2CodePattern.FindStringSubmatch(value); len(match) == 4 {
+			appendCandidate(match[1] + "-" + match[2] + "-" + match[3])
+		}
+		for _, code := range util.ExtractCodeFromName(value) {
+			appendCandidate(code)
+		}
+	}
+	requestedCode = strings.TrimSpace(requestedCode)
+	if requestedCode != "" && len(requestedCode) <= 128 && extensionJavCodePattern.MatchString(requestedCode) {
+		appendCandidate(requestedCode)
+	}
+	appendCodes(requestedCode)
+	appendCodes(magnetName)
+	if len(candidates) == 0 {
+		return "", false, nil
+	}
+	items, err := db.LookupJavOwnership(ctx, candidates)
+	if err != nil {
+		return "", false, err
+	}
+	for _, item := range items {
+		if item.Owned {
+			return item.Code, true, nil
+		}
+	}
+	return candidates[0], false, nil
 }
 
 func normalizeDownloadDirectory(value string) (string, error) {

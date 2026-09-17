@@ -23,6 +23,8 @@ type Video struct {
 	Jav                 *Jav            `json:"jav,omitempty" gorm:"-"`
 	DirectoryRef        Directory       `json:"directory,omitempty" gorm:"-"`
 	Locations           []VideoLocation `json:"locations,omitempty" gorm:"foreignKey:VideoID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Subtitles           []VideoSubtitle `json:"subtitles" gorm:"-"`
+	SubtitlesScannedAt  *time.Time      `json:"subtitles_scanned_at" gorm:"-"`
 	Hidden              bool            `json:"hidden" gorm:"-"`
 }
 

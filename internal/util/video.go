@@ -36,6 +36,17 @@ type VideoMetadata struct {
 	FormatBitRate   int64
 	VideoBitRate    int64
 	AudioBitRate    int64
+	SubtitleStreams []SubtitleStream
+}
+
+// SubtitleStream describes an embedded subtitle stream reported by ffprobe.
+type SubtitleStream struct {
+	Index    int
+	Codec    string
+	Language string
+	Title    string
+	Default  bool
+	Forced   bool
 }
 
 func (m *VideoMetadata) Fingerprint(size int64) string {
@@ -336,7 +347,7 @@ func ProbeVideoContext(ctx context.Context, path string) (*VideoMetadata, error)
 	cmd := exec.CommandContext(ctx, ffprobe,
 		"-v", "error",
 		"-print_format", "json",
-		"-show_entries", "stream=index,codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,sample_rate,channels,bit_rate",
+		"-show_entries", "stream=index,codec_type,codec_name,width,height,avg_frame_rate,r_frame_rate,sample_rate,channels,bit_rate:stream_tags=language,title:stream_disposition=default,forced",
 		"-show_entries", "format=duration,size,bit_rate,format_name",
 		path,
 	)
@@ -361,6 +372,7 @@ func ProbeVideoContext(ctx context.Context, path string) (*VideoMetadata, error)
 }
 
 type ffprobeStream struct {
+	Index        int    `json:"index"`
 	CodecName    string `json:"codec_name"`
 	CodecType    string `json:"codec_type"`
 	PixFmt       string `json:"pix_fmt"`
@@ -373,6 +385,14 @@ type ffprobeStream struct {
 	SampleRate   string `json:"sample_rate"`
 	Channels     int    `json:"channels"`
 	BitRate      string `json:"bit_rate"`
+	Tags         struct {
+		Language string `json:"language"`
+		Title    string `json:"title"`
+	} `json:"tags"`
+	Disposition struct {
+		Default int `json:"default"`
+		Forced  int `json:"forced"`
+	} `json:"disposition"`
 }
 type ffprobeResult struct {
 	Streams []ffprobeStream `json:"streams"`
@@ -391,6 +411,7 @@ func parseFFprobeOutput(out []byte, path string) (*VideoMetadata, error) {
 	}
 	var video *ffprobeStream
 	var audio *ffprobeStream
+	var resSubtitleStreams []SubtitleStream
 	for i := range res.Streams {
 		s := res.Streams[i]
 		switch strings.ToLower(strings.TrimSpace(s.CodecType)) {
@@ -402,6 +423,16 @@ func parseFFprobeOutput(out []byte, path string) (*VideoMetadata, error) {
 			if audio == nil {
 				audio = &s
 			}
+		case "subtitle":
+			metaSubtitle := SubtitleStream{
+				Index:    s.Index,
+				Codec:    strings.ToLower(strings.TrimSpace(s.CodecName)),
+				Language: strings.ToLower(strings.TrimSpace(s.Tags.Language)),
+				Title:    strings.TrimSpace(s.Tags.Title),
+				Default:  s.Disposition.Default != 0,
+				Forced:   s.Disposition.Forced != 0,
+			}
+			resSubtitleStreams = append(resSubtitleStreams, metaSubtitle)
 		}
 	}
 	if video == nil {
@@ -424,6 +455,7 @@ func parseFFprobeOutput(out []byte, path string) (*VideoMetadata, error) {
 		Height:          video.Height,
 		FPS:             fps,
 		DurationSeconds: duration,
+		SubtitleStreams: resSubtitleStreams,
 	}
 	if audio != nil {
 		meta.AudioCodec = strings.TrimSpace(audio.CodecName)

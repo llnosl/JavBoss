@@ -435,6 +435,7 @@ func buildConfigContent() (string, error) {
 		"input-default-bindings=no",
 		"keep-open=yes",
 		"keepaspect-window=no",
+		"sub-auto=fuzzy",
 		fmt.Sprintf("save-position-on-quit=%s", mpvBool(resumePlayback)),
 		fmt.Sprintf("resume-playback=%s", mpvBool(resumePlayback)),
 		fmt.Sprintf("ontop=%s", mpvBool(ontop)),

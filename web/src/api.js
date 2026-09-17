@@ -98,6 +98,79 @@ export async function fetchVideos({
   return data
 }
 
+export async function importVideoSubtitle(videoId, { locationId, language, file }) {
+  const form = new FormData()
+  form.set('location_id', String(locationId || ''))
+  form.set('language', String(language || ''))
+  form.set('file', file)
+  const res = await apiFetch(`/videos/${videoId}/subtitles/import`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) throw await apiError(res)
+  return res.json()
+}
+
+export async function updateVideoSubtitlePath(videoId, subtitleId, { locationId, path }) {
+  const res = await apiFetch(`/videos/${videoId}/subtitles/${subtitleId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      location_id: Number(locationId),
+      path: String(path || '').trim(),
+    }),
+  })
+  if (!res.ok) throw await apiError(res)
+  return res.json()
+}
+
+export async function generateVideoSubtitle(videoId, { locationId, model, device, language }) {
+  const res = await apiFetch(`/videos/${videoId}/subtitles/generate`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      location_id: Number(locationId),
+      model,
+      device,
+      language,
+    }),
+  })
+  if (!res.ok && res.status !== 409) throw await apiError(res)
+  return parseJSONResponse(res)
+}
+
+export async function fetchVideoSubtitleGeneration(videoId, locationId) {
+  const params = new URLSearchParams({ location_id: String(locationId) })
+  const res = await apiFetch(`/videos/${videoId}/subtitles/generate?${params.toString()}`)
+  if (!res.ok) throw await apiError(res)
+  return parseJSONResponse(res)
+}
+
+export async function fetchSubtitleGenerations() {
+  const res = await apiFetch('/subtitle-generations', { cache: 'no-store' })
+  if (!res.ok) throw await apiError(res)
+  const payload = await parseJSONResponse(res)
+  return Array.isArray(payload?.items) ? payload.items : []
+}
+
+export async function pauseSubtitleGeneration(videoId, locationId) {
+  const res = await apiFetch(
+    `/subtitle-generations/${Number(videoId)}/${Number(locationId)}/pause`,
+    { method: 'POST' }
+  )
+  if (!res.ok) throw await apiError(res)
+  return parseJSONResponse(res)
+}
+
+export async function resumeSubtitleGeneration(videoId, locationId) {
+  const res = await apiFetch(
+    `/subtitle-generations/${Number(videoId)}/${Number(locationId)}/resume`,
+    { method: 'POST' }
+  )
+  if (!res.ok) throw await apiError(res)
+  return parseJSONResponse(res)
+}
+
 export async function fetchTags({ hideJav = false } = {}) {
   const params = new URLSearchParams()
   params.set('hide_jav', hideJav ? '1' : '0')
@@ -675,14 +748,22 @@ export async function fetchDownloadJobs({ limit = 20, offset = 0, signal } = {})
   return parseJSONResponse(res)
 }
 
-export async function createDownloadJob({ magnetUrl }) {
+export async function createDownloadJob({ magnetUrl, overwriteExisting = false }) {
   const res = await apiFetch('/downloads', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
       magnet_url: magnetUrl,
+      overwrite_existing: overwriteExisting,
     }),
   })
+  if (res.status === 409) {
+    const payload = await parseJSONResponse(res)
+    if (payload?.requires_overwrite_confirmation) return payload
+    throw new Error(
+      getErrorMessage(zh(String(payload?.error_zh || ''), String(payload?.error_en || '')))
+    )
+  }
   if (!res.ok) throw await apiError(res)
   return parseJSONResponse(res)
 }

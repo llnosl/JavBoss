@@ -199,6 +199,8 @@ test("a clicked magnet link is submitted to the configured JavBoss server", asyn
   ]);
   assert.deepEqual(JSON.parse(harness.fetchCalls[0].options.body), {
     magnet_url: magnetUrl,
+    jav_code: "",
+    overwrite_existing: false,
   });
 });
 

@@ -31,6 +31,7 @@ type FileEntry struct {
 	Fingerprint   string
 	PathKey       string
 	DurationSec   int64
+	Subtitles     []models.VideoSubtitle
 }
 
 // Summary 汇总一次目录扫描产生的文件与目录变更数量。
@@ -236,6 +237,7 @@ func reconcileDirectoryContents(ctx context.Context, dir models.Directory, state
 func walkAndReconcileVideoFiles(ctx context.Context, directory models.Directory, state *syncState, summary *Summary) error {
 	// 边遍历文件边做指纹计算和 DB 更新，避免一次性构建全量快照
 	normalizedRoot := filepath.Clean(directory.Path)
+	subtitleCache := subtitleDirectoryCache{}
 	progress, _ := ctx.Value(directoryScanProgressKey{}).(*directoryScanProgress)
 	return filepath.WalkDir(normalizedRoot, func(candidatePath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -293,12 +295,14 @@ func walkAndReconcileVideoFiles(ctx context.Context, directory models.Directory,
 					existingLoc.IsDelete = false
 					existingLoc.ModifiedAt = modTime
 					if saved != nil {
+						refreshUnchangedLocationSubtitles(ctx, normalizedRoot, normalizedPath, saved, subtitleCache)
 						state.processedLocationIDs[saved.ID] = struct{}{}
 						state.existingLocationByPath[makePathKey(saved.DirectoryID, saved.RelativePath)] = saved
 						state.javLinks.Enqueue(saved.ID)
 					}
 					summary.Updated++
 				} else {
+					refreshUnchangedLocationSubtitles(ctx, normalizedRoot, normalizedPath, existingLoc, subtitleCache)
 					state.javLinks.Enqueue(existingLoc.ID)
 				}
 				return nil
@@ -317,6 +321,11 @@ func walkAndReconcileVideoFiles(ctx context.Context, directory models.Directory,
 		}
 		fingerprint := meta.FingerprintV2(info.Size())
 		durationSec := int64(math.Round(meta.DurationSeconds))
+		externalSubtitles, subtitleErr := externalSubtitleRecords(normalizedRoot, normalizedPath, subtitleCache)
+		if subtitleErr != nil {
+			logging.Error("scan external subtitles failed path=%s err=%v", normalizedPath, subtitleErr)
+		}
+		subtitles := append(embeddedSubtitleRecords(meta.SubtitleStreams), externalSubtitles...)
 
 		fileEntry := &FileEntry{
 			DirectoryID:   directory.ID,
@@ -328,6 +337,7 @@ func walkAndReconcileVideoFiles(ctx context.Context, directory models.Directory,
 			ModifiedAt:    modTime,
 			Fingerprint:   fingerprint,
 			DurationSec:   durationSec,
+			Subtitles:     subtitles,
 		}
 
 		return upsertVideo(ctx, fileEntry, state, summary)
@@ -402,12 +412,67 @@ func upsertLocationForEntry(ctx context.Context, video *models.Video, entry *Fil
 		return err
 	}
 	if loc != nil {
+		if err := db.ReplaceVideoLocationSubtitles(
+			ctx,
+			loc.ID,
+			[]string{models.SubtitleKindEmbedded, models.SubtitleKindExternal},
+			entry.Subtitles,
+			true,
+		); err != nil {
+			return fmt.Errorf("save video subtitles: %w", err)
+		}
 		state.processedLocationIDs[loc.ID] = struct{}{}
 		state.existingLocationByPath[makePathKey(loc.DirectoryID, loc.RelativePath)] = loc
 		state.javLinks.Enqueue(loc.ID)
 	}
 	state.existingByID[video.ID] = video
 	return nil
+}
+
+func refreshUnchangedLocationSubtitles(
+	ctx context.Context,
+	root string,
+	videoPath string,
+	location *models.VideoLocation,
+	cache subtitleDirectoryCache,
+) {
+	if location == nil || location.ID <= 0 {
+		return
+	}
+	external, err := externalSubtitleRecords(root, videoPath, cache)
+	if err != nil {
+		logging.Error("refresh external subtitles failed path=%s err=%v", videoPath, err)
+	} else if err := db.ReplaceVideoLocationSubtitles(
+		ctx,
+		location.ID,
+		[]string{models.SubtitleKindExternal},
+		external,
+		false,
+	); err != nil {
+		logging.Error("save external subtitles failed path=%s err=%v", videoPath, err)
+	}
+	if location.SubtitlesScannedAt != nil {
+		return
+	}
+	meta, err := util.ProbeVideoContext(ctx, videoPath)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			logging.Error("probe embedded subtitles failed path=%s err=%v", videoPath, err)
+		}
+		return
+	}
+	if err := db.ReplaceVideoLocationSubtitles(
+		ctx,
+		location.ID,
+		[]string{models.SubtitleKindEmbedded},
+		embeddedSubtitleRecords(meta.SubtitleStreams),
+		true,
+	); err != nil {
+		logging.Error("save embedded subtitles failed path=%s err=%v", videoPath, err)
+		return
+	}
+	now := time.Now().UTC()
+	location.SubtitlesScannedAt = &now
 }
 
 // hideUnprocessedVideoLocations 隐藏本次成功扫描中未再次发现的旧文件位置。

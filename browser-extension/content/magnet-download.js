@@ -49,6 +49,34 @@
     return validMagnetURL(event.target?.closest?.("a[href]")?.href);
   }
 
+  function javCodeFromText(value) {
+    const text = String(value || "");
+    const fc2 = text.match(
+      /(?:^|[^a-z0-9])(FC2[-_ ]?PPV[-_ ]?\d{5,8})(?:[^a-z0-9]|$)/i,
+    );
+    if (fc2) return fc2[1].toUpperCase().replace(/[_ ]+/g, "-");
+    const standard = text.match(
+      /(?:^|[^a-z0-9])([a-z]{2,8})[-_ ]?(\d{2,6})(?:[^a-z0-9]|$)/i,
+    );
+    if (!standard) return "";
+    return `${standard[1].toUpperCase()}-${standard[2]}`;
+  }
+
+  function javCodeForMagnet(magnetUrl) {
+    let displayName = "";
+    try {
+      displayName = new URL(magnetUrl).searchParams.get("dn") || "";
+    } catch {
+      // The magnet URL was already validated; page text remains a fallback.
+    }
+    return (
+      javCodeFromText(displayName) ||
+      javCodeFromText(document.querySelector?.("h1")?.textContent) ||
+      javCodeFromText(document.title) ||
+      javCodeFromText(window.location.pathname)
+    );
+  }
+
   function showStatus(message, failed = false) {
     let toast = document.getElementById(TOAST_ID);
     if (!toast) {
@@ -89,6 +117,7 @@
         return;
       const magnetUrl = clickedMagnetURL(event);
       if (!magnetUrl) return;
+      const javCode = javCodeForMagnet(magnetUrl);
 
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -98,10 +127,32 @@
       }
       showStatus("正在提交到 JavBoss…");
       chrome.runtime
-        .sendMessage({ type: MESSAGE_TYPE, magnetUrl })
-        .then((response) => {
+        .sendMessage({ type: MESSAGE_TYPE, magnetUrl, javCode })
+        .then(async (response) => {
+          if (response?.requiresOverwriteConfirmation) {
+            const code = response.code || javCode || "该番号";
+            if (
+              !window.confirm(
+                `番号 ${code} 已存在。覆盖会重新下载并替换同名文件，是否继续？`,
+              )
+            ) {
+              showStatus("已取消覆盖");
+              return;
+            }
+            showStatus("正在创建覆盖下载任务…");
+            response = await chrome.runtime.sendMessage({
+              type: MESSAGE_TYPE,
+              magnetUrl,
+              javCode: code,
+              overwriteExisting: true,
+            });
+          }
           if (!response?.ok) throw new Error(response?.error || "提交失败");
-          showStatus("已提交到 JavBoss 下载队列");
+          showStatus(
+            response?.overwritten
+              ? "已提交覆盖下载任务"
+              : "已提交到 JavBoss 下载队列",
+          );
         })
         .catch((error) => {
           showStatus(`提交到 JavBoss 失败：${error?.message || error}`, true);

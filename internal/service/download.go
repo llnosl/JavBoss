@@ -268,7 +268,7 @@ func processDownloadJob(ctx context.Context, job *models.DownloadJob, localLimit
 
 	remoteFolder := strings.TrimSpace(job.RemoteFolder)
 	if remoteFolder == "" {
-		name := downloadJobFolderName(job.MagnetName, job.InfoHash)
+		name := downloadJobFolderName(job.InfoHash)
 		rpcCtx, cancel := context.WithTimeout(ctx, downloaderAPITimeout)
 		remoteFolder, err = client.EnsureFolder(rpcCtx, baseFolder, name)
 		cancel()
@@ -398,7 +398,7 @@ func downloadJobFiles(ctx context.Context, job *models.DownloadJob, client downl
 		var progressErr error
 		var fileBytes int64
 		if fileErr == nil {
-			fileErr = downloadRemoteFile(ctx, client, remoteFile, remotePath, target, func(fileDownloaded int64) error {
+			fileErr = downloadRemoteFile(ctx, client, remoteFile, remotePath, target, job.OverwriteExisting, func(fileDownloaded int64) error {
 				fileBytes = fileDownloaded
 				progressErr = db.UpdateDownloadJob(ctx, job.ID, map[string]any{"bytes_downloaded": completedBytes + fileDownloaded})
 				return progressErr
@@ -571,9 +571,10 @@ func downloadRemoteFile(
 	remote downloader.RemoteFile,
 	remotePath string,
 	target string,
+	overwriteExisting bool,
 	onBytesWritten func(int64) error,
 ) error {
-	if existing, err := os.Stat(target); err == nil && existing.Mode().IsRegular() && existing.Size() == remote.Size {
+	if existing, err := os.Stat(target); !overwriteExisting && err == nil && existing.Mode().IsRegular() && existing.Size() == remote.Size {
 		return onBytesWritten(existing.Size())
 	}
 	part := target + ".part"
@@ -624,7 +625,7 @@ func downloadRemoteFile(
 		if response.StatusCode == http.StatusRequestedRangeNotSatisfiable && remote.Size > 0 && offset == remote.Size {
 			response.Body.Close()
 			file.Close()
-			return finalizeDownloadedFile(part, target, remote.Size, onBytesWritten)
+			return finalizeDownloadedFile(part, target, remote.Size, overwriteExisting, onBytesWritten)
 		}
 		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusPartialContent {
 			response.Body.Close()
@@ -663,7 +664,7 @@ func downloadRemoteFile(
 		if closeErr != nil {
 			return closeErr
 		}
-		return finalizeDownloadedFile(part, target, remote.Size, onBytesWritten)
+		return finalizeDownloadedFile(part, target, remote.Size, overwriteExisting, onBytesWritten)
 	}
 	return errors.New("download attempts exhausted")
 }
@@ -698,7 +699,7 @@ func copyDownloadResponse(ctx context.Context, target *os.File, source io.Reader
 	}
 }
 
-func finalizeDownloadedFile(part, target string, expected int64, onBytesWritten func(int64) error) error {
+func finalizeDownloadedFile(part, target string, expected int64, overwriteExisting bool, onBytesWritten func(int64) error) error {
 	info, err := os.Stat(part)
 	if err != nil {
 		return err
@@ -706,10 +707,47 @@ func finalizeDownloadedFile(part, target string, expected int64, onBytesWritten 
 	if expected > 0 && info.Size() != expected {
 		return fmt.Errorf("downloaded size mismatch for %s: got %d, want %d", filepath.Base(target), info.Size(), expected)
 	}
-	if err := os.Rename(part, target); err != nil {
+	if err := installDownloadedFile(part, target, overwriteExisting); err != nil {
 		return fmt.Errorf("finish local download: %w", err)
 	}
 	return onBytesWritten(info.Size())
+}
+
+func installDownloadedFile(part, target string, overwriteExisting bool) error {
+	if !overwriteExisting {
+		return os.Rename(part, target)
+	}
+	if _, err := os.Stat(target); errors.Is(err, os.ErrNotExist) {
+		return os.Rename(part, target)
+	} else if err != nil {
+		return err
+	}
+	backupFile, err := os.CreateTemp(filepath.Dir(target), ".javboss-overwrite-backup-*")
+	if err != nil {
+		return fmt.Errorf("create overwrite backup: %w", err)
+	}
+	backupPath := backupFile.Name()
+	if err := backupFile.Close(); err != nil {
+		_ = os.Remove(backupPath)
+		return fmt.Errorf("close overwrite backup: %w", err)
+	}
+	if err := os.Remove(backupPath); err != nil {
+		return fmt.Errorf("prepare overwrite backup: %w", err)
+	}
+	if err := os.Rename(target, backupPath); err != nil {
+		return fmt.Errorf("backup existing file: %w", err)
+	}
+	if err := os.Rename(part, target); err != nil {
+		restoreErr := os.Rename(backupPath, target)
+		if restoreErr != nil {
+			return fmt.Errorf("install replacement: %w; restore original: %v", err, restoreErr)
+		}
+		return fmt.Errorf("install replacement: %w", err)
+	}
+	if err := os.Remove(backupPath); err != nil {
+		logging.Error("remove completed download overwrite backup path=%s err=%v", backupPath, err)
+	}
+	return nil
 }
 
 func newDownloadHTTPClient() *http.Client {
@@ -764,12 +802,12 @@ func normalizeInfoHash(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func downloadJobFolderName(name, infoHash string) string {
-	prefix := normalizeInfoHash(infoHash)
-	if len(prefix) > 8 {
-		prefix = prefix[:8]
+func downloadJobFolderName(infoHash string) string {
+	normalized := normalizeInfoHash(infoHash)
+	if normalized == "" {
+		return "javboss-download"
 	}
-	return safeLocalName(name) + "-" + prefix
+	return "javboss-" + normalized
 }
 
 func safeLocalName(value string) string {

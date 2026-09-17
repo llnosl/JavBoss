@@ -6,6 +6,7 @@ import LocalOfferOutlinedIcon from '@mui/icons-material/LocalOfferOutlined'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import ManageSearchIcon from '@mui/icons-material/ManageSearch'
+import SubtitlesOutlinedIcon from '@mui/icons-material/SubtitlesOutlined'
 import { revealVideoLocation } from '@/api'
 import { useStore } from '@/store'
 import { displayHostPath, hostPathsEnabled } from '@/utils/hostPath'
@@ -16,6 +17,8 @@ import {
   parseVideoFingerprint,
 } from '@/utils/display'
 import { zh } from '@/utils/i18n'
+import { subtitleLanguageLabels, summarizeVideoSubtitles } from '@/utils/subtitles'
+import SubtitlePathPopover from '@/components/SubtitlePathPopover'
 import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined'
 import { MovieEdit } from '@mui/icons-material'
 
@@ -32,6 +35,8 @@ export default function VideoCard({
   showTagEditor = true,
   onOpenScreenshots,
   onOpenScrapeSettings,
+  onSearchSubtitles,
+  onSubtitleUpdated,
   onRenameVideo,
   onDeleteVideo,
   onTagClick,
@@ -58,6 +63,21 @@ export default function VideoCard({
   const inputId = `check-${video?.location_id || video.id}`
   const javCode = String(video?.jav?.code || video?.locations?.[0]?.jav?.code || '').trim()
   const hasScrapeOverride = Boolean(String(video?.jav_scrape_override || '').trim())
+  const subtitleSummary = summarizeVideoSubtitles(video)
+  const subtitleLanguageText = subtitleSummary.languages
+    .map((language) => subtitleLanguageLabels(language))
+    .filter(Boolean)
+    .map((labels) => zh(labels[0], labels[1]))
+    .join(' / ')
+  const subtitleBadgeText = subtitleSummary.hasSubtitles
+    ? subtitleLanguageText || zh('有字幕', 'Subtitles')
+    : subtitleSummary.scanned
+      ? zh('无字幕', 'No subtitles')
+      : zh('字幕未检测', 'Subtitles pending')
+  const subtitleDetailText = zh(
+    `内封 ${subtitleSummary.embeddedCount}，外挂 ${subtitleSummary.externalCount}`,
+    `Embedded ${subtitleSummary.embeddedCount}, external ${subtitleSummary.externalCount}`
+  )
   const canOpenFile = Boolean(onOpenFile)
   const canRevealFile = Boolean(onRevealFile)
   const thumbnailVersion = encodeURIComponent(
@@ -201,6 +221,21 @@ export default function VideoCard({
               {sizeText}
             </span>
           ) : null}
+          <SubtitlePathPopover
+            videos={[video]}
+            detailText={`${subtitleBadgeText} · ${subtitleDetailText}`}
+            onUpdated={onSubtitleUpdated}
+          >
+            <span
+              className={`inline-flex h-4 cursor-default items-center rounded px-1 text-[10px] font-medium ${
+                subtitleSummary.hasSubtitles
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              {subtitleBadgeText}
+            </span>
+          </SubtitlePathPopover>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {video.tags?.length
@@ -285,6 +320,21 @@ export default function VideoCard({
               <ManageSearchIcon fontSize="inherit" />
             </IconButton>
           </Tooltip>
+          {onSearchSubtitles ? (
+            <Tooltip title={zh('搜索字幕', 'Search subtitles')}>
+              <IconButton
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSearchSubtitles?.(video)
+                }}
+                aria-label={zh('搜索字幕', 'Search subtitles')}
+                className="h-6 w-6"
+              >
+                <SubtitlesOutlinedIcon fontSize="inherit" />
+              </IconButton>
+            </Tooltip>
+          ) : null}
           <Popover
             open={Boolean(editAnchorEl)}
             anchorEl={editAnchorEl}

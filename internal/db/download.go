@@ -127,6 +127,7 @@ func CreateDownloadJob(ctx context.Context, job *models.DownloadJob) error {
 	job.InfoHash = strings.TrimSpace(job.InfoHash)
 	job.MagnetURL = strings.TrimSpace(job.MagnetURL)
 	job.MagnetName = strings.TrimSpace(job.MagnetName)
+	job.JavCode = strings.TrimSpace(job.JavCode)
 	job.DownloadDirectory = strings.TrimSpace(job.DownloadDirectory)
 	if job.DownloadDirectory == "" || job.InfoHash == "" || job.MagnetURL == "" {
 		return errors.New("create download job: invalid job")

@@ -12,6 +12,8 @@ export default function VideoRoute({
   onDeleteVideo,
   onOpenScreenshots,
   onOpenScrapeSettings,
+  onSearchSubtitles,
+  onSubtitleUpdated,
   onRenameVideo,
   onTagClick,
   onSelectAll,
@@ -70,6 +72,8 @@ export default function VideoRoute({
       setTagPickerFor={setTagPickerFor}
       onOpenScreenshots={onOpenScreenshots}
       onOpenScrapeSettings={onOpenScrapeSettings}
+      onSearchSubtitles={onSearchSubtitles}
+      onSubtitleUpdated={onSubtitleUpdated}
       onRenameVideo={onRenameVideo}
       onDeleteVideo={onDeleteVideo}
       onTagClick={onTagClick}

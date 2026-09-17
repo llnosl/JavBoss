@@ -11,13 +11,15 @@ const javBossExtensionOrigin = "chrome-extension://iikdjhkpjihfkehccfmkpkdmenmba
 
 func createExtensionDownloadJob(c *gin.Context) {
 	var request struct {
-		MagnetURL string `json:"magnet_url"`
+		MagnetURL         string `json:"magnet_url"`
+		JavCode           string `json:"jav_code"`
+		OverwriteExisting bool   `json:"overwrite_existing"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		respondLocalizedError(c, http.StatusBadRequest, "下载请求格式不正确", "Invalid download request")
 		return
 	}
-	enqueueDownloadJob(c, request.MagnetURL)
+	enqueueDownloadJob(c, request.MagnetURL, request.JavCode, request.OverwriteExisting)
 }
 
 func isJavBossExtensionOrigin(c *gin.Context) bool {

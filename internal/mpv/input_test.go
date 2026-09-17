@@ -40,6 +40,9 @@ func TestBuildConfigContentIncludesRequiredDefaults(t *testing.T) {
 	if !strings.Contains(content, "input-default-bindings=no\n") {
 		t.Fatalf("expected input-default-bindings=no in mpv config, got %q", content)
 	}
+	if !strings.Contains(content, "sub-auto=fuzzy\n") {
+		t.Fatalf("expected sub-auto=fuzzy in mpv config, got %q", content)
+	}
 	if !strings.Contains(content, "auto-window-resize=no\n") {
 		t.Fatalf("expected auto-window-resize=no in fixed-size mpv config, got %q", content)
 	}

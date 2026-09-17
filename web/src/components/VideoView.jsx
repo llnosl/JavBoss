@@ -56,6 +56,8 @@ export default function VideoView({
   setTagPickerFor,
   onOpenScreenshots,
   onOpenScrapeSettings,
+  onSearchSubtitles,
+  onSubtitleUpdated,
   onRenameVideo,
   onDeleteVideo,
   onTagClick,
@@ -223,6 +225,8 @@ export default function VideoView({
           onOpenTagPicker={(vid) => setTagPickerFor(vid)}
           onOpenScreenshots={onOpenScreenshots}
           onOpenScrapeSettings={onOpenScrapeSettings}
+          onSearchSubtitles={onSearchSubtitles}
+          onSubtitleUpdated={onSubtitleUpdated}
           onRenameVideo={onRenameVideo}
           onDeleteVideo={onDeleteVideo}
           onTagClick={onTagClick}

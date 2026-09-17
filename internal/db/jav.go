@@ -373,6 +373,7 @@ func attachJavLocationVideos(ctx context.Context, items []models.Jav, directoryI
 		Where(activeLocationWhereSQL("video_location", "directory")).
 		Order("video_location.jav_id, video_location.id").
 		Preload("DirectoryRef").
+		Preload("Subtitles").
 		Preload("Video").
 		Preload("Video.Tags")
 	query = applyDirectoryFilter(query, "video_location", directoryIDs)

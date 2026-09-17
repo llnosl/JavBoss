@@ -234,7 +234,17 @@ export default function DownloadsView({ onToast }) {
     setSubmitting(true)
     setCreateError('')
     try {
-      await createDownloadJob({ magnetUrl: value })
+      const result = await createDownloadJob({ magnetUrl: value })
+      if (result?.requires_overwrite_confirmation) {
+        const confirmed = window.confirm(
+          zh(
+            `番号 ${result.code || ''} 已存在。覆盖会重新下载并替换同名文件，是否继续？`,
+            `JAV code ${result.code || ''} already exists. Overwrite will download it again and replace files with the same name. Continue?`
+          )
+        )
+        if (!confirmed) return
+        await createDownloadJob({ magnetUrl: value, overwriteExisting: true })
+      }
       setMagnetUrl('')
       setCreateOpen(false)
       if (page === 1) refreshJobs()

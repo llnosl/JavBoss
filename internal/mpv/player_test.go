@@ -121,6 +121,7 @@ func TestBuildBeforeLoadCommandsRestoreWindowAndConfigureScreenshots(t *testing.
 	expected := [][]any{
 		{"write-watch-later-config"},
 		{"set_property", "pause", false},
+		{"set_property", "sub-auto", "fuzzy"},
 		{"set_property", "screenshot-template", playbackScreenshotTemplate},
 		{"set_property", "screenshot-directory", expectedDir},
 	}
@@ -132,17 +133,34 @@ func TestBuildBeforeLoadCommandsRestoreWindowAndConfigureScreenshots(t *testing.
 	}
 }
 
-func TestBuildAfterLoadCommandsRestoresWindowOnDarwin(t *testing.T) {
-	commands := buildAfterLoadCommands()
-	if runtime.GOOS == "darwin" {
-		expected := [][]any{{"set_property", "window-minimized", false}}
-		if !reflect.DeepEqual(commands, expected) {
-			t.Fatalf("expected after-load commands %v, got %v", expected, commands)
-		}
-		return
+func TestBuildAfterLoadCommandsLoadsSubtitlesAndRestoresWindowOnDarwin(t *testing.T) {
+	commands := buildAfterLoadCommands(PlayOptions{SubtitleFiles: []string{"/videos/a.zh-cn.srt", "/videos/a.ja.srt"}})
+	expected := [][]any{
+		{"sub-add", "/videos/a.ja.srt", "auto"},
+		{"sub-add", "/videos/a.zh-cn.srt", "select"},
 	}
-	if len(commands) != 0 {
-		t.Fatalf("expected no after-load commands, got %v", commands)
+	if runtime.GOOS == "darwin" {
+		expected = append(expected, []any{"set_property", "window-minimized", false})
+	}
+	if !reflect.DeepEqual(commands, expected) {
+		t.Fatalf("expected after-load commands %v, got %v", expected, commands)
+	}
+}
+
+func TestBuildSubtitleArgsDeduplicatesFiles(t *testing.T) {
+	args := buildSubtitleArgs(PlayOptions{SubtitleFiles: []string{
+		" /videos/a.zh-cn.srt ",
+		"/videos/a.ja.srt",
+		"/videos/a.zh-cn.srt",
+		"",
+	}})
+	expected := []string{
+		"--sub-auto=no",
+		"--sub-file=/videos/a.ja.srt",
+		"--sub-file=/videos/a.zh-cn.srt",
+	}
+	if !reflect.DeepEqual(args, expected) {
+		t.Fatalf("expected subtitle args %v, got %v", expected, args)
 	}
 }
 
@@ -182,9 +200,9 @@ func TestBuildBeforeLoadCommandsUsesFallbackScreenshotDirWithoutVideoID(t *testi
 		t.Fatalf("buildBeforeLoadCommands returned error: %v", err)
 	}
 
-	expectedLen := 5
+	expectedLen := 6
 	if runtime.GOOS == "darwin" {
-		expectedLen = 4
+		expectedLen = 5
 	}
 	if len(commands) != expectedLen {
 		t.Fatalf("expected fallback screenshot directory command, got %v", commands)
